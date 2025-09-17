@@ -1,6 +1,6 @@
 const express = require("express");
 const mongoose = require("mongoose");
-require("dotenv").config(); // load .env
+require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
 
