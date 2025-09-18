@@ -10,7 +10,7 @@ router.get("/test-email", async (req, res) => {
   try {
     await transporter.sendMail({
       from: `"Admin" <${process.env.EMAIL_USER}>`,
-      to: "rajanakash3012@gmail.com", // Replace with your test email
+      to: "rajanakash3012@gmail.com", 
       subject: "Test Email from MeetAppServer",
       html: `<p>This is a test email to verify Nodemailer setup.</p>`,
     });

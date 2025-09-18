@@ -1,8 +1,8 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const dotenv = require("dotenv");
-const authRoutes = require("./routes/authRoutes");
-const meetingRoutes = require("./routes/meetingRoutes");
+import express from "express";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+import authRoutes from "./routes/authRoutes.js";
+import meetingRoutes from "./routes/meetingRoutes.js";
 
 dotenv.config();
 const app = express();

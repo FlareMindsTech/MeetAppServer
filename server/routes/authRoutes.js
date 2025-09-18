@@ -1,21 +1,28 @@
-const express = require("express");
-const { register, login } = require("../controller/authController");
-const userController = require("../controller/userController");
-const auth = require("../middleware/authMiddleware");
-const CheckRoles = require("../middleware/rolesMiddleware");
+import express from "express";
+import { register, login } from "../controller/authController.js";
+import { 
+  createUser, 
+  getUsers, 
+  getUserById, 
+  updateUser, 
+  deleteUser 
+} from "../controller/userController.js";
+
+import auth from "../middleware/authMiddleware.js";
+import CheckRoles from "../middleware/rolesMiddleware.js";
 
 const router = express.Router();
 
-// Public
+// Public routes
 router.post("/register", register);
 router.post("/login", login);
 
-// Protected CRUD
-router.post("/create-admin", auth, CheckRoles(["owner"]), userController.createUser);
-router.post("/create-student", auth, CheckRoles(["owner","admin"]), userController.createUser);
-router.get("/", auth, CheckRoles(["owner","admin"]), userController.getUsers);
-router.get("/:id", auth, CheckRoles(["owner","admin"]), userController.getUserById);
-router.put("/:id", auth, CheckRoles(["owner","admin"]), userController.updateUser);
-router.delete("/:id", auth, CheckRoles(["owner","admin"]), userController.deleteUser);
+// Protected CRUD routes
+router.post("/create-admin", auth, CheckRoles(["owner"]), createUser);
+router.post("/create-student", auth, CheckRoles(["owner","admin"]), createUser);
+router.get("/", auth, CheckRoles(["owner","admin"]), getUsers);
+router.get("/:id", auth, CheckRoles(["owner","admin"]), getUserById);
+router.put("/:id", auth, CheckRoles(["owner","admin"]), updateUser);
+router.delete("/:id", auth, CheckRoles(["owner","admin"]), deleteUser);
 
-module.exports = router;
+export default router;

@@ -1,13 +1,21 @@
-const express = require("express");
+import express from "express";
+import { 
+  createMeeting,
+  allocateStudents,
+  removeStudents,
+  rescheduleMeeting,
+  deleteMeeting
+} from "../controller/meetingController.js";
+
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
-const meetingController = require("../controller/meetingController");
-const authMiddleware = require("../middleware/authMiddleware");
 
 // CRUD + actions
-router.post("/", authMiddleware, meetingController.createMeeting);
-router.post("/:id/allocate", authMiddleware, meetingController.allocateStudents);
-router.post("/:id/remove", authMiddleware, meetingController.removeStudents);
-router.put("/:id/reschedule", authMiddleware, meetingController.rescheduleMeeting);
-router.delete("/:id", authMiddleware, meetingController.deleteMeeting);
+router.post("/", authMiddleware, createMeeting);
+router.post("/:id/allocate", authMiddleware, allocateStudents);
+router.post("/:id/remove", authMiddleware, removeStudents);
+router.put("/:id/reschedule", authMiddleware, rescheduleMeeting);
+router.delete("/:id", authMiddleware, deleteMeeting);
 
-module.exports = router;
+export default router;

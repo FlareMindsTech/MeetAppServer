@@ -1,6 +1,6 @@
-const Meeting = require("../Model/meet");
-const User = require("../Model/userSchema");
-const transporter = require("./transporter");
+import  Meeting from "../Model/meet.js";
+import User from "../Model/userSchema.js";
+import transporter from "./transporter.js";
 
 // Helper to calculate duration
 function calculateDuration(startTime, endTime) {
@@ -14,7 +14,7 @@ function calculateDuration(startTime, endTime) {
 // ---------------------------
 // Create Meeting
 // ---------------------------
-exports.createMeeting = async (req, res) => {
+export const createMeeting = async (req, res) => {
   try {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });
@@ -40,7 +40,7 @@ exports.createMeeting = async (req, res) => {
 // ---------------------------
 // Allocate Students
 // ---------------------------
-exports.allocateStudents = async (req, res) => {
+export const allocateStudents = async (req, res) => {
   try {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });
@@ -60,23 +60,30 @@ exports.allocateStudents = async (req, res) => {
       const alreadyAdded = meeting.students.find(
         (s) => s.studentId.toString() === student._id.toString()
       );
+
       if (!alreadyAdded) {
         meeting.students.push({ studentId: student._id });
+
+        // Send email including raw password
+        const mailOptions = {
+          from: `"Admin" <${process.env.EMAIL_USER}>`,
+          to: student.email,
+          subject: `Invitation: ${meeting.className}`,
+          html: `
+            <p>Hello <b>${student.FirstName}</b>,</p>
+            <p>You are invited to:</p>
+            <ul>
+              <li><b>Class:</b> ${meeting.className}</li>
+              <li><b>Date:</b> ${meeting.date.toDateString()}</li>
+              <li><b>Time:</b> ${meeting.startTime} - ${meeting.endTime}</li>
+              <li><b>Password:</b> ${student.rawPassword}</li>
+            </ul>
+            <p>Regards,<br>Admin</p>
+          `,
+        };
+
         try {
-          await transporter.sendMail({
-            from: `"Admin" <${process.env.EMAIL_USER}>`,
-            to: student.email,
-            subject: `Invitation: ${meeting.className}`,
-            html: `
-              <p>Hello <b>${student.FirstName}</b>,</p>
-              <p>You are invited to:</p>
-              <ul>
-                <li><b>Class:</b> ${meeting.className}</li>
-                <li><b>Date:</b> ${meeting.date.toDateString()}</li>
-                <li><b>Time:</b> ${meeting.startTime} - ${meeting.endTime}</li>
-              </ul>
-            `,
-          });
+          await transporter.sendMail(mailOptions);
           emailResults.push({ student: student.email, status: "Sent" });
         } catch (err) {
           emailResults.push({ student: student.email, status: "Failed", error: err.message });
@@ -96,7 +103,7 @@ exports.allocateStudents = async (req, res) => {
 // ---------------------------
 // Remove Students
 // ---------------------------
-exports.removeStudents = async (req, res) => {
+export const removeStudents = async (req, res) => {
   try {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });
@@ -136,6 +143,7 @@ exports.removeStudents = async (req, res) => {
               <li><b>Class:</b> ${meeting.className}</li>
               <li><b>Date:</b> ${meeting.date.toDateString()}</li>
               <li><b>Time:</b> ${meeting.startTime} - ${meeting.endTime}</li>
+              <li><b>Password:</b> ${student.rawPassword}</li>
             </ul>
             <p>Regards,<br>Admin</p>
           `,
@@ -156,7 +164,7 @@ exports.removeStudents = async (req, res) => {
 // ---------------------------
 // Reschedule Meeting
 // ---------------------------
-exports.rescheduleMeeting = async (req, res) => {
+export const rescheduleMeeting = async (req, res) => {
   try {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });
@@ -208,7 +216,7 @@ exports.rescheduleMeeting = async (req, res) => {
 // ---------------------------
 // Delete Meeting
 // ---------------------------
-exports.deleteMeeting = async (req, res) => {
+export const deleteMeeting = async (req, res) => {
   try {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });

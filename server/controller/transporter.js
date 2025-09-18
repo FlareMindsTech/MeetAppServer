@@ -1,5 +1,7 @@
-const nodemailer = require("nodemailer");
-require("dotenv").config();
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+dotenv.config(); // Load .env
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -11,6 +13,9 @@ const transporter = nodemailer.createTransport({
   debug: true,
 });
 
-transporter.verify().then(() => console.log("Mail server ready")).catch(console.error);
+// Verify connection
+transporter.verify()
+  .then(() => console.log("Mail server ready"))
+  .catch(console.error);
 
-module.exports = transporter;
+export default transporter; // ES module default export
