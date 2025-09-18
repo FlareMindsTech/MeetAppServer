@@ -1,4 +1,12 @@
 {
+  "name": "MeetAppServer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "dotenv": "^17.2.2",
