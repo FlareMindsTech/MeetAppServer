@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, unique: true, lowercase: true, required: true },
     phoneNumber: { type: String, unique: true },
     password: { type: String, minlength: 6, required: true },
+     rawPassword: { type: String },
     gender: { type: String, enum: ["Male", "Female", "others"] },
     role: { type: String, enum: ["owner", "admin", "student"], default: "student" },
     city: { type: String },
