@@ -1,46 +1,40 @@
+// In createUser controller
 import bcrypt from "bcryptjs";
 import User from "../Model/userSchema.js";
+import transporter from "./transporter.js";
 
-// Create user (admin or student)
+// Create student/admin/owner
 export const createUser = async (req, res) => {
   try {
     const { FirstName, LastName, email, phoneNumber, role } = req.body;
 
-    // generate random password
-    const randomString = Math.random().toString(36).slice(-4); // 4 random chars
-    const rawPassword = `${FirstName}${LastName}${email.split("@")[0]}${randomString}`;
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: "Email already exists" });
 
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "User already exists" });
+    // Generate random password
+    const rawPassword = Math.random().toString(36).slice(-8);
 
-    const user = new User({
+    // Save user (hashed password via pre-save)
+    const newUser = new User({
       FirstName,
       LastName,
       email,
       phoneNumber,
-      password: rawPassword, // gets hashed by pre-save middleware
-      rawPassword,
-      role
+      password: rawPassword,
+      role,
+      rawPassword // temporary
     });
 
-    await user.save();
+    await newUser.save();
 
     res.status(201).json({
-      message: `${role} created successfully`,
-      user: {
-        FirstName,
-        LastName,
-        email,
-        phoneNumber,
-        role,
-        rawPassword
-      }
+      message: "Student created successfully",
+      user: { FirstName, LastName, email, phoneNumber, role }
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
-
 // Get all users
 export const getUsers = async (req, res) => {
   try {
