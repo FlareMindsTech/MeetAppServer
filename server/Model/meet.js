@@ -28,8 +28,9 @@ const meetingSchema = new mongoose.Schema({
       type: String,
       enum: ['online', 'offline'],
       default: 'offline'
-    }
-  }]
+    },
+   
+  }], deleteAt: { type: Date },
 }, { timestamps: true });
 
 export default mongoose.model("Meeting", meetingSchema);

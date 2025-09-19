@@ -30,13 +30,23 @@ export const createMeeting = async (req, res) => {
 
     const { className, date, startTime, endTime } = req.body;
 
+    // Calculate duration (max 2 hours)
+    const duration = calculateDuration(startTime, endTime);
+
+    // Compute deleteAt timestamp (meeting end + 1 min grace)
+    const [eh, em] = endTime.split(":").map(Number);
+    const deleteAt = new Date(date);
+    deleteAt.setHours(eh, em, 0, 0);
+    deleteAt.setMinutes(deleteAt.getMinutes() + 1); // 1 min grace
+
     const meeting = new Meeting({
       className,
       date,
       startTime,
       endTime,
-      duration: calculateDuration(startTime, endTime),
-      students: [] // ensure default empty array
+      duration,
+      deleteAt,
+      students: [],
     });
 
     await meeting.save();
@@ -45,6 +55,7 @@ export const createMeeting = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 
 // allocated student
