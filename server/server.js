@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import meetingRoutes from "./routes/meetingRoutes.js";
 import "./utils/meetingAutodelete.js";
+import studentRoutes from "./routes/studentRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -12,6 +13,7 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/meetings", meetingRoutes);
+app.use("/api/student", studentRoutes);
 
 // Connect MongoDB
 mongoose.connect(process.env.MONGO_URI)

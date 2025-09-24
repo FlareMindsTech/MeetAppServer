@@ -2,46 +2,70 @@ import  Meeting from "../Model/meet.js";
 import User from "../Model/userSchema.js";
 import transporter from "./transporter.js";
 
-function calculateDuration(startTime, endTime) {
-  const [sh, sm] = startTime.split(":").map(Number);
-  const [eh, em] = endTime.split(":").map(Number);
 
-  let start = sh * 60 + sm;
-  let end = eh * 60 + em;
+// Helper: parse 12-hour AM/PM time
+function parseAMPM(time) {
+  if (!time) return null;
+  const match = time.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/);
+  if (!match) return null;
 
-  // Handle midnight crossing
-  let duration = end >= start ? end - start : (24 * 60 - start) + end;
+  let hours = parseInt(match[1], 10);
+  let minutes = parseInt(match[2], 10);
+  const modifier = match[3];
 
-  // Limit duration to 2 hours (120 minutes)
-  if (duration > 120) duration = 120;
+  if (modifier === "PM" && hours < 12) hours += 12;
+  if (modifier === "AM" && hours === 12) hours = 0;
 
-  return duration; // in minutes
+  return { hours, minutes };
 }
 
+// Helper: calculate duration in minutes (max 2 hours)
+function calculateDuration(startTime, endTime) {
+  const startParsed = parseAMPM(startTime);
+  const endParsed = parseAMPM(endTime);
 
+  if (!startParsed || !endParsed) return 0;
+
+  let start = startParsed.hours * 60 + startParsed.minutes;
+  let end = endParsed.hours * 60 + endParsed.minutes;
+
+  let duration = end >= start ? end - start : (24 * 60 - start) + end;
+  if (duration > 120) duration = 120;
+
+  return duration;
+}
 
 // ---------------------------
-// Create Meeting
+// Create Meeting Controller
 // ---------------------------
 export const createMeeting = async (req, res) => {
   try {
-    if (!["admin", "owner"].includes(req.user.role))
+    if (!["admin", "owner"].includes(req.user.role.toLowerCase()))
       return res.status(403).json({ error: "Not authorized" });
 
     const { className, date, startTime, endTime } = req.body;
 
-    // Calculate duration (max 2 hours)
+    // Parse times
+    const startParsed = parseAMPM(startTime);
+    const endParsed = parseAMPM(endTime);
+    if (!startParsed) return res.status(400).json({ error: "Invalid startTime format" });
+    if (!endParsed) return res.status(400).json({ error: "Invalid endTime format" });
+
+    // Parse date safely
+    const [year, month, day] = date.split("-").map(Number);
+    if (!year || !month || !day) return res.status(400).json({ error: "Invalid date format" });
+
+    // Calculate deleteAt (end time + 1 min grace)
+    const deleteAt = new Date(year, month - 1, day, endParsed.hours, endParsed.minutes, 0, 0);
+    deleteAt.setMinutes(deleteAt.getMinutes() + 1);
+
+    // Calculate duration
     const duration = calculateDuration(startTime, endTime);
 
-    // Compute deleteAt timestamp (meeting end + 1 min grace)
-    const [eh, em] = endTime.split(":").map(Number);
-    const deleteAt = new Date(date);
-    deleteAt.setHours(eh, em, 0, 0);
-    deleteAt.setMinutes(deleteAt.getMinutes() + 1); // 1 min grace
-
+    // Create meeting
     const meeting = new Meeting({
       className,
-      date,
+      date: new Date(year, month - 1, day),
       startTime,
       endTime,
       duration,
@@ -55,6 +79,7 @@ export const createMeeting = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 
 
