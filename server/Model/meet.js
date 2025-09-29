@@ -24,43 +24,50 @@ const meetingSchema = new mongoose.Schema({
   },
   students: [{
     studentId: {
+      
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true
+      required: false
     },
     status: {
       type: String,
+      
       enum: ['online', 'offline'],
       default: 'offline'
     }
   }],
+  status: {
+    type: String,
+    enum: ["Upcoming", "Ongoing", "Completed"],
+    default: "Upcoming"
+  },
   deleteAt: {
     type: Date // calculated from endTime
   }
 }, { timestamps: true });
 
 // Optional pre-save hook: ensure deleteAt is set
-meetingSchema.pre("save", function(next) {
-  if (!this.deleteAt && this.date && this.endTime) {
-    const parseAMPM = (time) => {
-      const match = time.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/);
-      if (!match) return null;
-      let hours = parseInt(match[1], 10);
-      const minutes = parseInt(match[2], 10);
-      const modifier = match[3];
-      if (modifier === "PM" && hours < 12) hours += 12;
-      if (modifier === "AM" && hours === 12) hours = 0;
-      return { hours, minutes };
-    };
+// meetingSchema.pre("save", function(next) {
+//   if (!this.deleteAt && this.date && this.endTime) {
+//     const parseAMPM = (time) => {
+//       const match = time.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/);
+//       if (!match) return null;
+//       let hours = parseInt(match[1], 10);
+//       const minutes = parseInt(match[2], 10);
+//       const modifier = match[3];
+//       if (modifier === "PM" && hours < 12) hours += 12;
+//       if (modifier === "AM" && hours === 12) hours = 0;
+//       return { hours, minutes };
+//     };
 
-    const endParsed = parseAMPM(this.endTime);
-    if (!endParsed) return next(new Error("Invalid endTime format"));
+//     const endParsed = parseAMPM(this.endTime);
+//     if (!endParsed) return next(new Error("Invalid endTime format"));
 
-    const d = new Date(this.date);
-    d.setHours(endParsed.hours, endParsed.minutes, 0, 0);
-    this.deleteAt = d;
-  }
-  next();
-});
+//     const d = new Date(this.date);
+//     d.setHours(endParsed.hours, endParsed.minutes, 0, 0);
+//     this.deleteAt = d;
+//   }
+//   next();
+// });
 
 export default mongoose.model("Meeting", meetingSchema);

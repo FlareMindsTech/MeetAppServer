@@ -1,6 +1,5 @@
 import User from "../Model/userSchema.js";
 import Meeting from "../Model/meet.js";
-import bcrypt from "bcryptjs";
 
 export const getProfile = async (req, res) => {
   const user = await User.findById(req.user.id).select("-password");
