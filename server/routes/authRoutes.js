@@ -16,10 +16,13 @@ import CheckRoles from "../middleware/rolesMiddleware.js";
 const router = express.Router();
 
 // Public routes
+
 router.post("/register", register);
 router.post("/login", login);
 router.patch("/change-password", auth, CheckRoles(["admin"]), changePassword);
+
 // Protected CRUD routes
+
 router.post("/create-admin", auth, CheckRoles(["owner"]), createUser);
 router.post("/create-student", auth, CheckRoles(["owner","admin"]), createUser);
 router.get("/", auth, CheckRoles(["owner","admin"]), getUsers);
