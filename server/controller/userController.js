@@ -114,6 +114,7 @@ export const createUser = async (req, res) => {
       email,
       phoneNumber,
       password,
+      rawPassword,
       role,
     });
 

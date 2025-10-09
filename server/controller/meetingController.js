@@ -55,9 +55,7 @@ export const createMeeting = async (req, res) => {
     const [year, month, day] = date.split("-").map(Number);
     if (!year || !month || !day) return res.status(400).json({ error: "Invalid date format" });
 
-    // Calculate deleteAt (end time + 1 min grace)
-    const deleteAt = new Date(year, month - 1, day, endParsed.hours, endParsed.minutes, 0, 0);
-    deleteAt.setMinutes(deleteAt.getMinutes() + 1);
+ 
 
     // Calculate duration
     const duration = calculateDuration(startTime, endTime);
