@@ -13,9 +13,9 @@ const transporter = nodemailer.createTransport({
   debug: true,
 });
 
-// Verify connection
-transporter.verify()
-  .then(() => console.log("Mail server ready"))
-  .catch(console.error);
+// Verify connection my changes
+// transporter.verify()
+//   .then(() => console.log("Mail server ready"))
+//   .catch(console.error);
 
 export default transporter; // ES module default export
