@@ -3,13 +3,12 @@ import jwt from "jsonwebtoken";
 // Auth middleware: checks JWT
 export default function auth(req, res, next) {
   const authHeader = req.header("Authorization");
-
-  // 1️⃣ Header missing
+  // 1Header missing
   if (!authHeader) {
     return res.status(401).json({ error: "No Authorization header provided" });
   }
 
-  // 2️⃣ Check format: must be "Bearer <token>"
+  // Check format: must be "Bearer <token>"
   const parts = authHeader.split(" ");
   if (parts.length !== 2 || parts[0] !== "Bearer") {
     return res.status(401).json({ error: "Invalid Authorization header format" });
@@ -17,7 +16,7 @@ export default function auth(req, res, next) {
 
   const token = parts[1];
 
-  // 3️⃣ Verify JWT
+  // Verify JWT
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
     req.user = decoded; // contains { id, role, email }

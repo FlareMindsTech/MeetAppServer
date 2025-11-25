@@ -47,3 +47,7 @@ Thumbs.db
 
 # Debugger
 node_modules/.cache/
+
+
+
+uploads/

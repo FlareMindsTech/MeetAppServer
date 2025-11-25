@@ -1,12 +1,15 @@
-import  Meeting from "../Model/meet.js";
+import Meeting from "../Model/meet.js";
 import User from "../Model/userSchema.js";
 import transporter from "./transporter.js";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
-// Helper: parse 12-hour AM/PM time
+
 function parseAMPM(time) {
   if (!time) return null;
-  const match = time.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/);
+  const match = time
+    .trim()
+    .toUpperCase()
+    .match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/);
   if (!match) return null;
 
   let hours = parseInt(match[1], 10);
@@ -29,7 +32,7 @@ function calculateDuration(startTime, endTime) {
   let start = startParsed.hours * 60 + startParsed.minutes;
   let end = endParsed.hours * 60 + endParsed.minutes;
 
-  let duration = end >= start ? end - start : (24 * 60 - start) + end;
+  let duration = end >= start ? end - start : 24 * 60 - start + end;
   if (duration > 120) duration = 120;
 
   return duration;
@@ -43,27 +46,33 @@ export const createMeeting = async (req, res) => {
     if (!["admin", "owner"].includes(req.user.role.toLowerCase()))
       return res.status(403).json({ error: "Not authorized" });
 
-    const { className, date, startTime, endTime } = req.body;
+    const { className, date, startTime, endTime, courseId, meetingUrl } =
+      req.body;
 
-    // Parse times
     const startParsed = parseAMPM(startTime);
     const endParsed = parseAMPM(endTime);
-    if (!startParsed) return res.status(400).json({ error: "Invalid startTime format" });
-    if (!endParsed) return res.status(400).json({ error: "Invalid endTime format" });
+    if (!startParsed)
+      return res.status(400).json({ error: "Invalid startTime format" });
+    if (!endParsed)
+      return res.status(400).json({ error: "Invalid endTime format" });
 
-    // Parse date safely
     const [year, month, day] = date.split("-").map(Number);
-    if (!year || !month || !day) return res.status(400).json({ error: "Invalid date format" });
+    if (!year || !month || !day)
+      return res.status(400).json({ error: "Invalid date format" });
 
-    // Calculate deleteAt (end time + 1 min grace)
-    const deleteAt = new Date(year, month - 1, day, endParsed.hours, endParsed.minutes, 0, 0);
+    const deleteAt = new Date(
+      year,
+      month - 1,
+      day,
+      endParsed.hours,
+      endParsed.minutes,
+      0,
+      0
+    );
     deleteAt.setMinutes(deleteAt.getMinutes() + 1);
 
-    // Calculate duration
     const duration = calculateDuration(startTime, endTime);
-    
 
-    // Create meeting
     const meeting = new Meeting({
       className,
       date: new Date(year, month - 1, day),
@@ -71,23 +80,19 @@ export const createMeeting = async (req, res) => {
       endTime,
       duration,
       deleteAt,
+
+      courseId: courseId || null,
+      meetingUrl: meetingUrl || null,
       students: [],
     });
 
     await meeting.save();
     res.json({ message: "Meeting created successfully", meeting });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 };
-
-
-
-
-
-
-
-
 
 // allocated student
 export const allocateStudents = async (req, res) => {
@@ -99,9 +104,20 @@ export const allocateStudents = async (req, res) => {
     const meeting = await Meeting.findById(req.params.id);
     if (!meeting) return res.status(404).json({ message: "Meeting not found" });
 
+    if (meeting.courseId) {
+      return res.status(400).json({
+        message:
+          "Cannot manually allocate students to a course-wide 'Live Class'. Students get access by purchasing the course.",
+      });
+    }
+
     meeting.students = meeting.students || [];
-    const students = await User.find({ _id: { $in: studentIds }, role: "student" });
-    if (!students.length) return res.status(400).json({ message: "No valid students found" });
+    const students = await User.find({
+      _id: { $in: studentIds },
+      role: "student",
+    });
+    if (!students.length)
+      return res.status(400).json({ message: "No valid students found" });
 
     const emailResults = [];
     const allocatedStudents = [];
@@ -112,11 +128,16 @@ export const allocateStudents = async (req, res) => {
       );
 
       if (alreadyAdded) {
-        emailResults.push({ student: student.email, status: "Already allocated" });
+        emailResults.push({
+          student: student.email,
+          status: "Already allocated",
+        });
         continue;
       }
-       // Generate dummy meeting link for this student
-      const dummyLink = `https://dummy-meeting.com/${Math.random().toString(36).substring(2, 10)}`;
+      // Generate dummy meeting link for this student
+      const dummyLink = `https://dummy-meeting.com/${Math.random()
+        .toString(36)
+        .substring(2, 10)}`;
 
       // Allocate student
       meeting.students.push({ studentId: student._id });
@@ -169,7 +190,11 @@ export const allocateStudents = async (req, res) => {
 
         emailResults.push({ student: student.email, status: "Email sent" });
       } catch (err) {
-        emailResults.push({ student: student.email, status: "Failed", error: err.message });
+        emailResults.push({
+          student: student.email,
+          status: "Failed",
+          error: err.message,
+        });
       }
     }
 
@@ -292,9 +317,6 @@ export const allocateStudents = async (req, res) => {
 //   }
 // };
 
-
-
-
 // ---------------------------
 // Remove Students
 // ---------------------------
@@ -345,11 +367,17 @@ export const removeStudents = async (req, res) => {
         });
         emailResults.push({ student: student.email, status: "Sent" });
       } catch (err) {
-        emailResults.push({ student: student.email, status: "Failed", error: err.message });
+        emailResults.push({
+          student: student.email,
+          status: "Failed",
+          error: err.message,
+        });
       }
     }
 
-    meeting = await Meeting.findById(meeting._id).populate("students.studentId");
+    meeting = await Meeting.findById(meeting._id).populate(
+      "students.studentId"
+    );
     res.json({ message: "Students removed", meeting, emailResults });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -360,14 +388,15 @@ export const removeStudents = async (req, res) => {
 // Reschedule Meeting
 // ---------------------------
 
-
 export const rescheduleMeeting = async (req, res) => {
   try {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });
 
     const { date, startTime, endTime } = req.body;
-    let meeting = await Meeting.findById(req.params.id).populate("students.studentId");
+    let meeting = await Meeting.findById(req.params.id).populate(
+      "students.studentId"
+    );
     if (!meeting) return res.status(404).json({ error: "Meeting not found" });
 
     if (date) meeting.date = date;
@@ -400,7 +429,11 @@ export const rescheduleMeeting = async (req, res) => {
         });
         emailResults.push({ student: student.email, status: "Sent" });
       } catch (err) {
-        emailResults.push({ student: student.email, status: "Failed", error: err.message });
+        emailResults.push({
+          student: student.email,
+          status: "Failed",
+          error: err.message,
+        });
       }
     }
 
@@ -418,7 +451,9 @@ export const deleteMeeting = async (req, res) => {
     if (!["admin", "owner"].includes(req.user.role))
       return res.status(403).json({ error: "Not authorized" });
 
-    const meeting = await Meeting.findById(req.params.id).populate("students.studentId");
+    const meeting = await Meeting.findById(req.params.id).populate(
+      "students.studentId"
+    );
     if (!meeting) return res.status(404).json({ error: "Meeting not found" });
 
     const emailResults = [];
@@ -442,7 +477,11 @@ export const deleteMeeting = async (req, res) => {
         });
         emailResults.push({ student: student.email, status: "Sent" });
       } catch (err) {
-        emailResults.push({ student: student.email, status: "Failed", error: err.message });
+        emailResults.push({
+          student: student.email,
+          status: "Failed",
+          error: err.message,
+        });
       }
     }
 
@@ -450,5 +489,39 @@ export const deleteMeeting = async (req, res) => {
     res.json({ message: "Meeting deleted", emailResults });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+export const getCourseLiveClasses = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const studentId = req.user.id;
+
+    const student = await User.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const now = new Date();
+    const subscription = student.subscribedCourses.find(
+      (sub) => sub.courseId.toString() === courseId && sub.expiresAt > now
+    );
+    const isSubscribed = !!subscription;
+
+    const classes = await Meeting.find({ courseId: courseId })
+      .sort({ date: "asc", startTime: "asc" })
+      .lean();
+
+    const securedClasses = classes.map((cls) => {
+      if (!isSubscribed) {
+        cls.meetingUrl = null;
+      }
+      return cls;
+    });
+
+    res.json(securedClasses);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: err.message });
   }
 };
