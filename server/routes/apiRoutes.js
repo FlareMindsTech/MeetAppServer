@@ -5,7 +5,7 @@ import checkRoles from "../middleware/rolesMiddleware.js";
 import { createUser } from "../controller/userController.js";
 
 // --- IMPORT ALL CONTROLLERS ---
-import { register, login, resetPassword, logout} from "../controller/authController.js";
+import { register, login, resetPassword,requestPasswordReset, logout} from "../controller/authController.js";
 import { getProfile, updatePassword, updateProfile } from "../controller/studentController.js";
 import { 
   getPublicCourses, getCourseDetails, enrollStudent, 
@@ -49,7 +49,8 @@ const studentOnly = checkRoles(["student"]);
 // a) Authentication & Profile 
 router.post("/auth/register", register);
 router.post("/auth/login", login);
-router.post("/auth/reset-password", resetPassword);
+router.post("/auth/forgot-password", requestPasswordReset); 
+router.post("/auth/reset-password/:resetToken", resetPassword);
 router.get("/user/profile", auth, getProfile);
 router.put("/user/profile", auth, upload.single("photo"), updateProfile);
 router.put("/user/profile/password", auth, updatePassword);

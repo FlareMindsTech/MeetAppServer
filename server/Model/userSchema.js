@@ -39,6 +39,8 @@ const userSchema = new mongoose.Schema(
     profilePic: { type: String },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
     subscribedCourses: [subscriptionSchema],
   },
   { timestamps: true }

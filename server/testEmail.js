@@ -1,5 +1,7 @@
-require("dotenv").config(); // load .env
-const nodemailer = require("nodemailer");
+import dotenv from "dotenv";
+import nodemailer from "nodemailer";
+
+dotenv.config(); // load .env from project root
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -11,15 +13,16 @@ const transporter = nodemailer.createTransport({
   debug: true,
 });
 
-transporter.sendMail(
-  {
+try {
+  const info = await transporter.sendMail({
     from: process.env.EMAIL_USER,
     to: "rajanakash3012@gmail.com", // replace with your email to test
     subject: "Test Email",
     text: "This is a test email from your Node.js app.",
-  },
-  (err, info) => {
-    if (err) console.log("Error:", err);
-    else console.log("Email sent:", info.response);
-  }
-);
+  });
+
+  console.log("Email sent:", info.response || info);
+} catch (err) {
+  console.error("Error sending test email:", err);
+  process.exit(1);
+}

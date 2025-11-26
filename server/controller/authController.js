@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../Model/userSchema.js";
+import crypto from "crypto";
+import transporter from "./transporter.js";
 
 // @desc    Register a new user (Student, Admin, etc.)
 // @route   POST /api/auth/register
@@ -124,32 +126,79 @@ export const login = async (req, res) => {
   }
 };
 
-// @desc    Initiate Password Reset
-// @route   POST /api/auth/reset-password
-export const resetPassword = async (req, res) => {
+// @desc    Request Password Reset (Send Email)
+// @route   POST /api/auth/forgot-password
+export const requestPasswordReset = async (req, res) => {
   try {
     const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
     const user = await User.findOne({ email });
+
     if (!user) {
-      return res
-        .status(404)
-        .json({ message: "User with this email not found" });
+      return res.json({ message: "If this email exists, a reset link has been sent." });
     }
 
-    // Example logic to be added later:
-    // const resetToken = crypto.randomBytes(32).toString("hex");
-    // user.resetPasswordToken = resetToken;
-    // await user.save();
-    // await sendEmail(user.email, resetToken);
+    // 1. Generate Token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    
+    // 2. Hash it and save to DB
+    user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
 
-    res.json({
-      message: "If this email exists, a password reset link has been sent.",
+    // 3. Send Email
+    const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+    
+    try {
+      await transporter.sendMail({
+        to: user.email,
+        subject: "Password Reset Request",
+        html: `
+          <h3>Password Reset</h3>
+          <p>Click the link below to reset your password:</p>
+          <a href="${resetUrl}">${resetUrl}</a>
+          <p>This link expires in 1 hour.</p>
+        `,
+      });
+      
+      res.json({ message: "If this email exists, a reset link has been sent." });
+    } catch (emailErr) {
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      await user.save();
+      return res.status(500).json({ message: "Email sending failed." });
+    }
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc    Reset Password (Verify Token & Change)
+// @route   POST /api/auth/reset-password/:resetToken
+export const resetPassword = async (req, res) => {
+  try {
+    const { resetToken } = req.params;
+    const { password } = req.body;
+
+    const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: Date.now() },
     });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    // Update password
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: "Password Reset Successful! You can now login." });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

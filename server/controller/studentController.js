@@ -23,15 +23,22 @@ export const updateProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: "User not found" });
+    // Safely read body (multer should populate `req.body` for multipart/form-data)
+    const body = req.body || {};
+    if (!req.body) {
+      console.debug("updateProfile: req.body is undefined. Ensure request is sent as multipart/form-data (use form-data in Postman) and include text fields.", {
+        contentType: req.headers["content-type"] || null,
+      });
+    }
 
     // 1. Update Text Fields (if provided)
-    if (req.body.FirstName) user.FirstName = req.body.FirstName;
-    if (req.body.LastName) user.LastName = req.body.LastName;
-    if (req.body.phoneNumber) user.phoneNumber = req.body.phoneNumber;
-    if (req.body.gender) user.gender = req.body.gender;
-    if (req.body.city) user.city = req.body.city;
-    if (req.body.state) user.state = req.body.state;
-    if (req.body.pinCode) user.pinCode = req.body.pinCode;
+    if (body.FirstName) user.FirstName = body.FirstName;
+    if (body.LastName) user.LastName = body.LastName;
+    if (body.phoneNumber) user.phoneNumber = body.phoneNumber;
+    if (body.gender) user.gender = body.gender;
+    if (body.city) user.city = body.city;
+    if (body.state) user.state = body.state;
+    if (body.pinCode) user.pinCode = body.pinCode;
     
     // 2. Handle Profile Picture Upload
     if (req.file) {
@@ -41,7 +48,7 @@ export const updateProfile = async (req, res) => {
       // --- CLOUDINARY SUPPORT ---
       // If you switched to Cloudinary, just use this:
       user.profilePic = req.file.path; 
-
+      user.photo = req.file.path;
       /* --- LOCAL STORAGE SUPPORT (Commented out if using Cloudinary) ---
       if (user.profilePic && user.profilePic.startsWith("/uploads")) {
           const oldPath = path.join(process.cwd(), user.profilePic); 
