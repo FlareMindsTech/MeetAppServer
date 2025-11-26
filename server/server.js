@@ -1,13 +1,7 @@
-
-
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 import cors from "cors"; 
-
-
 import apiRoutes from "./routes/apiRoutes.js"; 
 
 dotenv.config();
@@ -18,22 +12,29 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors()); // Allow frontend requests
 
-// Static Files Setup
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-const uploadPath = path.join(__dirname, "..", "uploads");
-
-console.log("Serving static files from:", uploadPath); 
-
-// Serve the folder at the "/uploads" URL
-app.use("/uploads", express.static(uploadPath));
-
-// API Routes
+//Api Routes
+//all routes with /api
 app.use("/api", apiRoutes); 
 
-// Connect DB & Start
+// error handler 
+// app.use((err, req, res, next) => {
+//   try {
+//     console.error("=== Express Error Handler ===");
+//     if (err && typeof err === "object") {
+//       // Log full enumerable and non-enumerable properties
+//       console.error(JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+//       if (err.stack) console.error(err.stack);
+//     } else {
+//       console.error(err);
+//     }
+//   } catch (loggingErr) {
+//     console.error("Error while logging error:", loggingErr);
+//   }
+//   if (res.headersSent) return next(err);
+//   res.status(err && err.status ? err.status : 500).json({ message: err && err.message ? err.message : "Internal Server Error" });
+// });
+
+// Connect MongoDB & Start Server
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB connected");

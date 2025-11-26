@@ -1,17 +1,15 @@
 import User from "../Model/userSchema.js";
 import Meeting from "../Model/meet.js";
 import Course from "../Model/course.js";
-import bcrypt from "bcryptjs";
-import path from "path";
-import fs from "fs";
+import bcrypt from "bcryptjs"; 
+// import path from "path";       
+// import fs from "fs";           
 
 // @desc    Get student profile details
 // @route   GET /api/user/profile
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select(
-      "-password -rawPassword"
-    );
+    const user = await User.findById(req.user.id).select("-password -rawPassword");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
@@ -34,32 +32,34 @@ export const updateProfile = async (req, res) => {
     if (req.body.city) user.city = req.body.city;
     if (req.body.state) user.state = req.body.state;
     if (req.body.pinCode) user.pinCode = req.body.pinCode;
-
+    
     // 2. Handle Profile Picture Upload
     if (req.file) {
-      // Optional: Delete old profile pic to save space
+      // If using Cloudinary (req.file.path is URL), use it directly
+      // If using Local Storage, build the path
+
+      // --- CLOUDINARY SUPPORT ---
+      // If you switched to Cloudinary, just use this:
+      user.profilePic = req.file.path; 
+
+      /* --- LOCAL STORAGE SUPPORT (Commented out if using Cloudinary) ---
       if (user.profilePic && user.profilePic.startsWith("/uploads")) {
-        const oldPath = path.join(process.cwd(), user.profilePic);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath); // Delete old file
-        }
+          const oldPath = path.join(process.cwd(), user.profilePic); 
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath); 
+          }
       }
-
-      // Save new path
-      const relativePath = path
-        .join("uploads", "thumbnails", path.basename(req.file.path))
-        .replace(/\\/g, "/");
-
+      const relativePath = path.join("uploads", "thumbnails", path.basename(req.file.path)).replace(/\\/g, "/");
       user.profilePic = `/${relativePath}`;
+      */
     }
 
     await user.save();
-
-    // Return user without password
+    
     const updatedUser = user.toObject();
     delete updatedUser.password;
     delete updatedUser.rawPassword;
-
+    
     res.json({ message: "Profile updated successfully", user: updatedUser });
   } catch (err) {
     console.error(err);
@@ -74,16 +74,12 @@ export const updatePassword = async (req, res) => {
     const { oldPassword, newPassword } = req.body;
     const userId = req.user.id;
 
-    // Find user
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Verify old password
     const isMatch = await bcrypt.compare(oldPassword, user.password);
-    if (!isMatch)
-      return res.status(400).json({ message: "Old password is incorrect" });
+    if (!isMatch) return res.status(400).json({ message: "Old password is incorrect" });
 
-    // Update password (pre-save middleware in UserSchema will hash it)
     user.password = newPassword;
     await user.save();
 
@@ -98,11 +94,8 @@ export const updatePassword = async (req, res) => {
 export const getMeetings = async (req, res) => {
   try {
     const studentId = req.user.id;
-
-    // Find meetings where this student is explicitly included
-    const meetings = await Meeting.find({
-      "students.studentId": studentId,
-    }).sort({ date: 1, startTime: 1 });
+    const meetings = await Meeting.find({ "students.studentId": studentId })
+      .sort({ date: 1, startTime: 1 });
 
     res.json(meetings);
   } catch (err) {
@@ -112,28 +105,36 @@ export const getMeetings = async (req, res) => {
 
 // @desc    Get My Active Subscriptions
 // @route   GET /api/student/my-courses
-// export const getMyActiveSubscriptions = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).populate({
-//       path: "subscribedCourses.courseId",
-//       select: "title thumbnail description price isLiveCourse duration category"
-//     });
+export const getMyActiveSubscriptions = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate({
+      path: "subscribedCourses.courseId",
+      select: "title thumbnail description price isLiveCourse duration category"
+    });
 
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found" });
-//     }
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-//     // Filter out expired courses and null courses (deleted ones)
-//     const now = new Date();
-//     const activeSubscriptions = user.subscribedCourses.filter(
-//       (sub) => sub.courseId && sub.expiresAt > now
-//     );
+    const now = new Date();
+    // Filter to show only active subscriptions
+    const activeSubscriptions = user.subscribedCourses.filter(
+      (sub) => sub.courseId && new Date(sub.expiresAt) > now
+    );
 
-//     res.json(activeSubscriptions);
-//   } catch (err) {
-//     res.status(500).json({ message: err.message });
-//   }
-// };
+    // Format the response to return course details directly
+    const formattedResponse = activeSubscriptions.map(sub => ({
+        ...sub.courseId.toObject(),
+        expiresAt: sub.expiresAt,
+        subscribedAt: sub.subscribedAt
+    }));
+
+    res.json(formattedResponse);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+};
 
 // @desc    Get a specific course detail (Helper check)
 // @route   GET /api/student/my-courses/:courseId
@@ -145,27 +146,20 @@ export const getSubscribedCourseVideo = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
     // Find the subscription
     const subscription = user.subscribedCourses.find(
       (sub) => sub.courseId.toString() === courseId
     );
 
     if (!subscription) {
-      return res
-        .status(403)
-        .json({ message: "You are not subscribed to this course" });
+      return res.status(403).json({ message: "You are not subscribed to this course" });
     }
 
-    // Check if subscription is expired
-    if (subscription.expiresAt <= new Date()) {
+    if (new Date(subscription.expiresAt) <= new Date()) {
       return res.status(403).json({ message: "Your subscription has expired" });
     }
 
-    // Get the course details
-    const course = await Course.findById(courseId).select(
-      "title thumbnail description category"
-    );
+    const course = await Course.findById(courseId).select("title thumbnail description category");
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }

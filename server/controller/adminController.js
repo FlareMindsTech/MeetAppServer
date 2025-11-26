@@ -1,12 +1,14 @@
-// File: server/controller/adminController.js
-
 import Course from "../Model/course.js";
 import Module from "../Model/module.js";
 import Lesson from "../Model/lesson.js";
 import Progress from "../Model/progress.js";
 import User from "../Model/userSchema.js";
-import path from "path";
-import fs from "fs";
+
+
+// import path from "path";
+// import fs from "fs";
+
+// --- 1. MODULE MANAGEMENT ---
 
 // @desc    Add a Module to a Course
 // @route   POST /api/admin/courses/:id/modules
@@ -73,6 +75,8 @@ export const deleteModule = async (req, res) => {
   }
 };
 
+// --- 2. LESSON MANAGEMENT ---
+
 // @desc    Create a new Lesson (Video/PDF)
 // @route   POST /api/admin/lessons/create
 export const createLesson = async (req, res) => {
@@ -85,28 +89,24 @@ export const createLesson = async (req, res) => {
     }
 
     let type = "text";
-    let folder = "files";
-
     if (file.mimetype.startsWith("video")) {
         type = "video";
-        folder = "videos";
     } else if (file.mimetype.includes("pdf")) {
         type = "pdf";
-        folder = "pdfs";
     } else if (file.mimetype.startsWith("image")) {
         type = "image";
-        folder = "thumbnails";
     }
 
-    // FIX: Generate the web-accessible URL path
-    // Note: We use forward slashes '/' for URLs, even on Windows
-    const relativePath = `uploads/${folder}/${path.basename(file.path)}`;
+    
+    // Multer-storage-cloudinary puts the full URL in 'file.path'
+    const contentUrl = file.path; 
+    
 
     const newLesson = await Lesson.create({
       module: moduleId,
       title,
       type,
-      contentUrl: `/${relativePath}`, // Result: /uploads/videos/123_video.mp4
+      contentUrl: contentUrl, // Saves: https://res.cloudinary.com/
       isFree: isFree === 'true',
       duration: duration || 0,
       order: order || 0
@@ -114,8 +114,10 @@ export const createLesson = async (req, res) => {
 
     res.status(201).json(newLesson);
   } catch (err) {
+    console.error("FULL ERROR DETAILS:", JSON.stringify(err, null, 2));
+    console.error("ERROR MESSAGE:", err.message);
     console.error(err);
-    res.status(500).json({ message: err.message });
+   res.status(500).json({ message: err.message || "Server Error" });
   }
 };
 
@@ -136,17 +138,11 @@ export const updateLesson = async (req, res) => {
     if (req.file) {
       let type = "text";
       if (req.file.mimetype.startsWith("video")) type = "video";
-      if (req.file.mimetype.includes("pdf")) type = "pdf";
+      else if (req.file.mimetype.includes("pdf")) type = "pdf";
+      else if (req.file.mimetype.startsWith("image")) type = "image";
 
-      const relativePath = path
-        .join(
-          "uploads",
-          type === "video" ? "videos" : "pdfs",
-          path.basename(req.file.path)
-        )
-        .replace(/\\/g, "/");
-
-      lesson.contentUrl = `/${relativePath}`;
+    
+      lesson.contentUrl = req.file.path; // Update URL
       lesson.type = type;
     }
 
@@ -166,6 +162,7 @@ export const deleteLesson = async (req, res) => {
     const lesson = await Lesson.findById(id);
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
 
+
     await lesson.deleteOne();
     res.json({ message: "Lesson deleted successfully" });
   } catch (err) {
@@ -173,11 +170,12 @@ export const deleteLesson = async (req, res) => {
   }
 };
 
+// --- 3. STUDENT MANAGEMENT ---
+
 export const getAllStudents = async (req, res) => {
   try {
-    
     const students = await User.find({ role: "student" })
-      .select("-password -rawPassword") // Hide passwords
+      .select("-password -rawPassword") 
       .sort({ createdAt: -1 });
 
     res.json(students);
@@ -251,6 +249,8 @@ export const deactivateStudent = async (req, res) => {
   }
 };
 
+// @desc    Upload Resource (Standalone)
+// @route   POST /admin/lesson/upload
 export const uploadResource = async (req, res) => {
   try {
     if (!req.file) {
@@ -262,17 +262,13 @@ export const uploadResource = async (req, res) => {
     else if (req.file.mimetype.includes("pdf")) type = "pdf";
     else if (req.file.mimetype.startsWith("image")) type = "image";
 
-    const relativePath = path
-      .join(
-        "uploads",
-        type === "video" ? "videos" : type === "pdf" ? "pdfs" : "images",
-        path.basename(req.file.path)
-      )
-      .replace(/\\/g, "/");
+    
+    const contentUrl = req.file.path;
+    
 
     res.status(200).json({
       message: "Upload successful",
-      url: `/${relativePath}`,
+      url: contentUrl, // Returns Cloudinary URL
       type: type,
       originalName: req.file.originalname,
     });

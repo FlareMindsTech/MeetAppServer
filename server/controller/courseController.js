@@ -1,11 +1,11 @@
-import path from "path";
-import fs from "fs";
+// import path from "path";
+// import fs from "fs";
 import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
 import transporter from "./transporter.js";
-import ContentGroup from "../Model/module.js";
-import ContentFile from "../Model/lesson.js";
 
+import Module from "../Model/module.js";  
+import Lesson from "../Model/lesson.js"; 
 // --- 1. PUBLIC & STUDENT APIs ---
 
 // @desc    List all courses (Public)
@@ -19,9 +19,7 @@ export const getPublicCourses = async (req, res) => {
     if (type === "live") filter.isLiveCourse = true;
 
     const courses = await Course.find(filter)
-      .select(
-        "title description thumbnail price isLiveCourse duration category"
-      )
+      .select("title description thumbnail price isLiveCourse duration category")
       .sort({ createdAt: -1 });
 
     res.json(courses);
@@ -39,8 +37,8 @@ export const getCourseDetails = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    // Fetch "Modules" (ContentGroups) for this course
-    const modules = await ContentGroup.find({ course: req.params.id })
+    // Fetch Modules for this course
+    const modules = await Module.find({ course: req.params.id })
       .sort("order")
       .lean();
 
@@ -55,14 +53,11 @@ export const getCourseDetails = async (req, res) => {
 // @route   POST /api/courses/:id/enroll
 export const enrollStudent = async (req, res) => {
   try {
-    // Use route param for courseId if provided, otherwise body
     const courseId = req.params.id || req.body.courseId;
     const { studentId, durationInDays } = req.body;
 
     if (!studentId || !courseId) {
-      return res
-        .status(400)
-        .json({ message: "studentId and courseId are required" });
+      return res.status(400).json({ message: "studentId and courseId are required" });
     }
 
     const student = await User.findById(studentId);
@@ -71,15 +66,12 @@ export const enrollStudent = async (req, res) => {
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    // Default duration to 365 if not provided
     const validDuration = durationInDays || course.durationInDays || 365;
-
-    // Calculate expiry
+    // Calculate expiration date
     const now = new Date();
     const expiresAt = new Date(now);
     expiresAt.setDate(expiresAt.getDate() + parseInt(validDuration, 10));
 
-    // Check existing subscription
     const existingSub = student.subscribedCourses.find(
       (sub) => sub.courseId.toString() === courseId
     );
@@ -121,31 +113,18 @@ export const enrollStudent = async (req, res) => {
   }
 };
 
+
 // --- 2. ADMIN MANAGEMENT APIs ---
 
 // @desc    Create a new course
-// @route   POST /api/courses
+// @route   POST /api/admin/courses/create
 export const createCourse = async (req, res) => {
   try {
     const {
-      title,
-      description,
-      category,
-      price,
-      createdBy,
-      duration,
-      isLiveCourse,
-      durationInDays,
+      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays
     } = req.body;
 
-    if (
-      !title ||
-      !description ||
-      !category ||
-      !price ||
-      !duration ||
-      !durationInDays
-    ) {
+    if (!title || !description || !category || !price || !duration || !durationInDays) {
       return res.status(400).json({ message: "Required fields missing" });
     }
 
@@ -153,9 +132,8 @@ export const createCourse = async (req, res) => {
       return res.status(400).json({ message: "Thumbnail image is required" });
     }
 
-    const relativePath = path
-      .join("uploads", "thumbnails", path.basename(req.file.path))
-      .replace(/\\/g, "/");
+    // Cloudinary URL
+    const thumbnail = req.file.path; 
 
     const course = await Course.create({
       title,
@@ -164,7 +142,7 @@ export const createCourse = async (req, res) => {
       price: Number(price),
       createdBy,
       duration,
-      thumbnail: `/${relativePath}`,
+      thumbnail: thumbnail,
       isLiveCourse: isLiveCourse === "true",
       durationInDays: Number(durationInDays),
     });
@@ -177,19 +155,12 @@ export const createCourse = async (req, res) => {
 };
 
 // @desc    Update a course
-// @route   PUT /api/courses/:id
+// @route   PUT /api/admin/courses/:id/update
 export const updateCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      title,
-      description,
-      category,
-      price,
-      createdBy,
-      duration,
-      isLiveCourse,
-      durationInDays,
+      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays
     } = req.body;
 
     const course = await Course.findById(id);
@@ -205,11 +176,7 @@ export const updateCourse = async (req, res) => {
     course.durationInDays = Number(durationInDays) || course.durationInDays;
 
     if (req.file) {
-      // Delete old thumbnail logic can go here
-      const relativePath = path
-        .join("uploads", "thumbnails", path.basename(req.file.path))
-        .replace(/\\/g, "/");
-      course.thumbnail = `/${relativePath}`;
+      course.thumbnail = req.file.path;
     }
 
     const updatedCourse = await course.save();
@@ -220,16 +187,16 @@ export const updateCourse = async (req, res) => {
 };
 
 // @desc    Delete a course
-// @route   DELETE /api/courses/:id
+// @route   DELETE /api/admin/courses/:id/delete
 export const deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const course = await Course.findById(id);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    // Cleanup
-    await ContentFile.deleteMany({ course: course._id });
-    await ContentGroup.deleteMany({ course: course._id });
+    // Cleanup related data
+    await Lesson.deleteMany({ course: course._id });
+    await Module.deleteMany({ course: course._id });
     await User.updateMany(
       { "subscribedCourses.courseId": course._id },
       { $pull: { subscribedCourses: { courseId: course._id } } }
@@ -243,31 +210,28 @@ export const deleteCourse = async (req, res) => {
 };
 
 // @desc    Get all courses with full content (Admin Dashboard)
-// @route   GET /api/courses/admin/all
+// @route   GET /api/admin/courses
 export const getAllCourses = async (req, res) => {
   try {
-    // 1. Get courses
     const courses = await Course.find({}).sort({ createdAt: -1 }).lean();
 
-    // 2. Loop through courses
     const coursesWithContent = await Promise.all(
       courses.map(async (course) => {
-        // A. Get Modules (ContentGroups)
-        const groups = await ContentGroup.find({ course: course._id })
+        // Get Modules
+        const modules = await Module.find({ course: course._id })
           .sort("order")
           .lean();
 
-        // B. Loop through Modules to get Lessons (ContentFiles) <-- THIS IS THE MISSING PART
+        // Loop through Modules to get Lessons
         const modulesWithLessons = await Promise.all(
-          groups.map(async (group) => {
-            const lessons = await ContentFile.find({ module: group._id })
+          modules.map(async (module) => {
+            const lessons = await Lesson.find({ module: module._id })
               .sort("order")
               .lean();
-
-            // Return the module WITH its lessons
+            
             return {
-              ...group,
-              lessons: lessons,
+              ...module,
+              lessons: lessons, 
             };
           })
         );
@@ -284,53 +248,16 @@ export const getAllCourses = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-// @desc    Get purchased students
-// @route   GET /api/courses/:courseId/purchased-students
-export const getCoursePurchasedStudents = async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    if (!courseId)
-      return res.status(400).json({ message: "courseId is required" });
 
-    const students = await User.find({ "subscribedCourses.courseId": courseId })
-      .select("FirstName LastName email subscribedCourses")
-      .lean();
-
-    const result = students.map((s) => {
-      const sub = s.subscribedCourses.find(
-        (c) => String(c.courseId) === String(courseId)
-      );
-      return {
-        username: `${s.FirstName || ""} ${s.LastName || ""}`.trim(),
-        email: s.email,
-        subscribedAt: sub?.subscribedAt,
-        expiresAt: sub?.expiresAt,
-      };
-    });
-
-    return res.json({
-      courseId,
-      totalStudents: result.length,
-      students: result,
-    });
-  } catch (err) {
-    return res.status(500).json({ message: err.message });
-  }
-};
-
+// @desc    Get just the modules (for dropdowns/lists)
+// @route   GET /api/courses/:id/modules
 export const getCourseModules = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Find all modules (ContentGroups) linked to this course
-    const modules = await ContentGroup.find({ course: id })
-      .sort({ order: 1 })
-      .lean();
+    const modules = await Module.find({ course: id }).sort({ order: 1 }).lean();
 
     if (!modules || modules.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No modules found for this course" });
+      return res.status(404).json({ message: "No modules found for this course" });
     }
 
     res.json(modules);
@@ -338,4 +265,31 @@ export const getCourseModules = async (req, res) => {
     console.error(err);
     res.status(500).json({ message: err.message });
   }
+};
+
+// @desc    Get purchased students
+// @route   GET /api/admin/courses/:courseId/students
+export const getCoursePurchasedStudents = async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      if (!courseId) return res.status(400).json({ message: "courseId is required" });
+  
+      const students = await User.find({ "subscribedCourses.courseId": courseId })
+        .select("FirstName LastName email subscribedCourses")
+        .lean();
+  
+      const result = students.map((s) => {
+        const sub = s.subscribedCourses.find((c) => String(c.courseId) === String(courseId));
+        return {
+          username: `${s.FirstName || ""} ${s.LastName || ""}`.trim(),
+          email: s.email,
+          subscribedAt: sub?.subscribedAt,
+          expiresAt: sub?.expiresAt,
+        };
+      });
+  
+      return res.json({ courseId, totalStudents: result.length, students: result });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
 };
