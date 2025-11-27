@@ -53,29 +53,45 @@ export const getCourseDetails = async (req, res) => {
 // @route   POST /api/courses/:id/enroll
 export const enrollStudent = async (req, res) => {
   try {
-    const courseId = req.params.id || req.body.courseId;
-    const { studentId, durationInDays } = req.body;
+    const courseId = req.params.id;
+    const studentId = req.user.id; 
 
-    if (!studentId || !courseId) {
-      return res.status(400).json({ message: "studentId and courseId are required" });
+    // 1. Check if Course Exists
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
     }
 
+    // 2. SECURITY CHECK: Is the course actually free?
+    if (course.price > 0) {
+      return res.status(403).json({ 
+        message: "This is a paid course. Please proceed to payment." 
+      });
+    }
+
+    // 3. Find Student
     const student = await User.findById(studentId);
     if (!student) return res.status(404).json({ message: "Student not found" });
 
-    const course = await Course.findById(courseId);
-    if (!course) return res.status(404).json({ message: "Course not found" });
-
-    const validDuration = durationInDays || course.durationInDays || 365;
-    // Calculate expiration date
-    const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setDate(expiresAt.getDate() + parseInt(validDuration, 10));
-
+    // 4. Check if already enrolled
     const existingSub = student.subscribedCourses.find(
       (sub) => sub.courseId.toString() === courseId
     );
 
+    const now = new Date();
+    
+    if (existingSub) {
+        if (existingSub.expiresAt > now) {
+            return res.status(400).json({ message: "You are already enrolled." });
+        }
+    }
+
+    // 5. Calculate Expiry
+    const durationInDays = course.durationInDays || 365; 
+    const expiresAt = new Date(now);
+    expiresAt.setDate(expiresAt.getDate() + parseInt(durationInDays, 10));
+
+    // 6. Save Subscription
     if (existingSub) {
       existingSub.expiresAt = expiresAt;
       existingSub.subscribedAt = now;
@@ -89,30 +105,33 @@ export const enrollStudent = async (req, res) => {
 
     await student.save();
 
-    // Send Email
-    try {
-      const expiryDateString = expiresAt.toLocaleDateString("en-US");
-      await transporter.sendMail({
-        from: `"Admin" <${process.env.EMAIL_USER}>`,
-        to: student.email,
-        subject: `Enrollment Successful: ${course.title}`,
-        html: `
-          <p>Hello <b>${student.FirstName}</b>,</p>
-          <p>You have been enrolled in <b>${course.title}</b>.</p>
-          <p>Access expires on: <b>${expiryDateString}</b></p>
-          <p>Happy Learning!</p>
-        `,
-      });
-    } catch (emailErr) {
-      console.error("Email failed:", emailErr);
-    }
+    // --- 7. SEND EMAIL NOTIFICATION (NEW ADDITION) ---
+   try {
+  const info = await transporter.sendMail({
+    from: `"Admin" <${process.env.EMAIL_USER}>`,
+    to: student.email,
+    subject: `Enrollment Confirmed: ${course.title}`,
+    html: `...`,   // <-- This long block
+  });
 
-    res.status(200).json({ message: "Enrolled successfully", expiresAt });
+  console.log("Email send result:", info);
+} catch (emailErr) {
+  console.error("Email sending failed:", emailErr);
+}
+
+    // -------------------------------------------------
+
+    res.status(200).json({ 
+        message: "Enrolled successfully", 
+        course: course.title,
+        expiresAt 
+    });
+
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: err.message });
   }
 };
-
 
 // --- 2. ADMIN MANAGEMENT APIs ---
 
