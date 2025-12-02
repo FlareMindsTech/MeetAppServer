@@ -1,49 +1,38 @@
 import mongoose from "mongoose";
 
+const emiPlanSchema = new mongoose.Schema(
+  {
+    name: { type: String }, // e.g., "3 months EMI", "6 months EMI"
+    plan_id: { type: String }, // optional Razorpay plan id (if using gateway plans)
+    installments: { type: Number, required: true }, // number of installments
+    interestPercent: { type: Number, default: 0 }, // optional interest %
+    perInstallmentAmount: { type: Number }, // optional precomputed amount (in INR)
+    totalAmount: { type: Number }, // optional totalAmount (may include interest)
+    metadata: { type: mongoose.Schema.Types.Mixed },
+  },
+  { _id: false }
+);
+
 const courseSchema = new mongoose.Schema(
   {
-    title: {
-      type: String,
-      required: [true, "Title is required"],
-      trim: true,
+    title: String,
+    description: String,
+    category: String,
+    price: { type: Number, required: true }, // base price
+    createdBy: String,
+    duration: String,
+    durationInDays: { type: Number, default: 365 },
+    thumbnail: String,
+    isLiveCourse: { type: Boolean, default: false },
+
+    // PAYMENT OPTIONS for this course
+    paymentOptions: {
+      allowFullPayment: { type: Boolean, default: true },
+      allowEMI: { type: Boolean, default: false },
+      emiPlans: [emiPlanSchema],
     },
-    description: {
-      type: String,
-      required: [true, "Description is required"],
-      trim: true,
-    },
-    category: {
-      type: String,
-      required: [true, "Category is required"],
-      trim: true,
-    },
-    price: {
-      type: Number,
-      required: [true, "Price is required"],
-      min: 0,
-    },
-    createdBy: {
-      type: String,
-      required: [true, "Created By is required"],
-      trim: true,
-    },
-    duration: {
-      type: String,
-      required: [true, "Duration is required"],
-      trim: true,
-    },
-    thumbnail: {
-      type: String,
-      required: [true, "Thumbnail is required"],
-    },
-    isLiveCourse: {
-      type: Boolean,
-      default: false,
-    },
-    durationInDays: {
-      type: Number,
-      default: 365,
-    },
+
+    // ... other fields ...
   },
   { timestamps: true }
 );

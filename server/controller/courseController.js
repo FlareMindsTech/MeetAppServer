@@ -3,7 +3,7 @@
 import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
 import transporter from "./transporter.js";
-
+import Subscription from "../Model/subscription.js"; 
 import Module from "../Model/module.js";  
 import Lesson from "../Model/lesson.js"; 
 // --- 1. PUBLIC & STUDENT APIs ---
@@ -54,7 +54,7 @@ export const getCourseDetails = async (req, res) => {
 export const enrollStudent = async (req, res) => {
   try {
     const courseId = req.params.id;
-    const studentId = req.user.id; 
+    const studentId = req.user.id;
 
     // 1. Check if Course Exists
     const course = await Course.findById(courseId);
@@ -64,8 +64,8 @@ export const enrollStudent = async (req, res) => {
 
     // 2. SECURITY CHECK: Is the course actually free?
     if (course.price > 0) {
-      return res.status(403).json({ 
-        message: "This is a paid course. Please proceed to payment." 
+      return res.status(403).json({
+        message: "This is a paid course. Please proceed to payment.",
       });
     }
 
@@ -79,19 +79,19 @@ export const enrollStudent = async (req, res) => {
     );
 
     const now = new Date();
-    
+
     if (existingSub) {
-        if (existingSub.expiresAt > now) {
-            return res.status(400).json({ message: "You are already enrolled." });
-        }
+      if (existingSub.expiresAt > now) {
+        return res.status(400).json({ message: "You are already enrolled." });
+      }
     }
 
     // 5. Calculate Expiry
-    const durationInDays = course.durationInDays || 365; 
+    const durationInDays = course.durationInDays || 365;
     const expiresAt = new Date(now);
     expiresAt.setDate(expiresAt.getDate() + parseInt(durationInDays, 10));
 
-    // 6. Save Subscription
+    // 6. Save Subscription (to user document)
     if (existingSub) {
       existingSub.expiresAt = expiresAt;
       existingSub.subscribedAt = now;
@@ -105,33 +105,52 @@ export const enrollStudent = async (req, res) => {
 
     await student.save();
 
-    // --- 7. SEND EMAIL NOTIFICATION (NEW ADDITION) ---
-   try {
-  const info = await transporter.sendMail({
-    from: `"Admin" <${process.env.EMAIL_USER}>`,
-    to: student.email,
-    subject: `Enrollment Confirmed: ${course.title}`,
-    html: `...`,   // <-- This long block
-  });
+    // 7. Create a Subscription record (type = free) for admin visibility
+    try {
+      await Subscription.create({
+        student: studentId,
+        course: courseId,
+        type: "free",
+        amount: 0,
+        currency: "INR",
+        status: "active",
+        expiresAt,
+        metadata: { source: "manual-free-enroll" },
+      });
+    } catch (err) {
+      console.error("Could not create subscription record for free enroll:", err);
+      // continue anyway (we don't want to fail the entire request for analytics record)
+    }
 
-  console.log("Email send result:", info);
-} catch (emailErr) {
-  console.error("Email sending failed:", emailErr);
-}
+    // 8. SEND EMAIL NOTIFICATION (NEW ADDITION)
+    try {
+      const info = await transporter.sendMail({
+        from: `"Admin" <${process.env.EMAIL_USER}>`,
+        to: student.email,
+        subject: `Enrollment Confirmed: ${course.title}`,
+        html: `
+          <p>Hello ${student.FirstName || ""},</p>
+          <p>You have been enrolled in <b>${course.title}</b>. Your access is valid until <b>${expiresAt.toLocaleDateString("en-US")}</b>.</p>
+        `,
+      });
+      console.log("Email send result:", info);
+    } catch (emailErr) {
+      console.error("Email sending failed:", emailErr);
+    }
 
     // -------------------------------------------------
 
-    res.status(200).json({ 
-        message: "Enrolled successfully", 
-        course: course.title,
-        expiresAt 
+    res.status(200).json({
+      message: "Enrolled successfully",
+      course: course.title,
+      expiresAt,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: err.message });
   }
 };
+
 
 // --- 2. ADMIN MANAGEMENT APIs ---
 
@@ -140,7 +159,7 @@ export const enrollStudent = async (req, res) => {
 export const createCourse = async (req, res) => {
   try {
     const {
-      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays
+      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays, paymentOptions
     } = req.body;
 
     if (!title || !description || !category || !price || !duration || !durationInDays) {
@@ -153,6 +172,10 @@ export const createCourse = async (req, res) => {
 
     // Cloudinary URL
     const thumbnail = req.file.path; 
+    let parsedPaymentOptions = {};
+    if (typeof paymentOptions === "string") {
+    try { parsedPaymentOptions = JSON.parse(paymentOptions); } catch(e) {}
+}
 
     const course = await Course.create({
       title,
@@ -163,6 +186,7 @@ export const createCourse = async (req, res) => {
       duration,
       thumbnail: thumbnail,
       isLiveCourse: isLiveCourse === "true",
+      paymentOptions:parsedPaymentOptions,
       durationInDays: Number(durationInDays),
     });
 

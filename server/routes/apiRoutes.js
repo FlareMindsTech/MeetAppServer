@@ -90,7 +90,8 @@ router.get("/cms/privacy-policy", getPrivacyPolicy);
 router.get("/cms/terms", getTerms);
 
 // i) Payments / Subscription 
-router.post("/payment/initiate", auth, studentOnly, createOrder, initiatePayment);
+// Use `initiatePayment` which decides between subscription vs one-time orders.
+router.post("/payment/initiate", auth, studentOnly, initiatePayment);
 router.post("/payment/verify", auth, studentOnly, verifyPayment);
 router.get("/subscription/status", auth, studentOnly, getSubscriptionStatus); // Reused logic
 router.post("/payment/create-subscription", auth, studentOnly, createSubscription);
