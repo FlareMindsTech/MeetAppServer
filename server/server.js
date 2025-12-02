@@ -38,7 +38,6 @@
 //   })
 //   .catch(err => console.error("MongoDB connection error:", err));
 
-
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -61,6 +60,12 @@ app.use(express.json({
 
 app.use(express.urlencoded({ extended: true }));
 app.use(cors()); // Allow frontend requests
+
+// --- HEALTH CHECK ROUTE ---
+// Add this so you don't see "Cannot GET /" when clicking the main link
+app.get("/", (req, res) => {
+  res.send("API is running successfully!");
+});
 
 // --- API ROUTES ---
 app.use("/api", apiRoutes); 
