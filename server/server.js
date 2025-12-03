@@ -1,5 +1,3 @@
-
-
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -9,55 +7,85 @@ import apiRoutes from "./routes/apiRoutes.js";
 dotenv.config();
 const app = express();
 
-// --- MIDDLEWARE ---
+// --- 1. MIDDLEWARE ---
 
-// Capture the raw body for signature verification
-// This must be defined BEFORE any routes are mounted.
+// Capture the raw body for Razorpay Webhook signature verification
 app.use(express.json({
   verify: (req, res, buf) => {
-    // Store the raw buffer in req.rawBody so the webhook controller can verify the signature
     req.rawBody = buf;
   }
 }));
 
 app.use(express.urlencoded({ extended: true }));
-app.use(cors()); // Allow frontend requests
+app.use(cors()); 
 
-// --- HEALTH CHECK ROUTE ---
-// Add this so you don't see "Cannot GET /" when clicking the main link
+// --- 2. DATABASE CONNECTION LOGIC (Cached Pattern) ---
+// This pattern prevents creating multiple connections on Vercel reloads
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
+const connectDB = async () => {
+  // If we have a connection, return it
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  // If no connection promise exists, create a new one
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false, //Stop buffering to prevent timeouts
+    };
+
+    cached.promise = mongoose.connect(process.env.MONGO_URI, opts).then((mongoose) => {
+      console.log("MongoDB Connected");
+      return mongoose;
+    });
+  }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
+
+  return cached.conn;
+};
+
+// --- 3. CONNECTION MIDDLEWARE ---
+// This ensures DB is connected BEFORE any route is accessed
+app.use(async (req, res, next) => {
+  // Skip DB connection for the health check route to verify server is up
+  if (req.path === '/') {
+    return next();
+  }
+  
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("Database connection failed:", error);
+    res.status(500).json({ error: "Database connection failed" });
+  }
+});
+
+// --- 4. ROUTES ---
 app.get("/", (req, res) => {
   res.send("API is running successfully!");
 });
 
-// --- API ROUTES ---
 app.use("/api", apiRoutes); 
 
-// --- DATABASE CONNECTION LOGIC (Optimized for Vercel) ---
-const connectDB = async () => {
-  // If already connected, reuse the connection
-  if (mongoose.connection.readyState >= 1) return;
+// --- 5. START SERVER ---
 
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("MongoDB Connected");
-  } catch (err) {
-    console.error("MongoDB connection error:", err);
-  }
-};
-
-// --- START SERVER ---
-
-// 1. If running on Vercel, export the app (Vercel handles the server)
-if (process.env.VERCEL) {
-    connectDB(); // Ensure DB is connected on cold start
-} 
-// 2. If running locally, start the server manually
-else {
-    connectDB().then(() => {
-        const PORT = process.env.PORT || 5000;
-        app.listen(PORT, () => {
-            console.log(`Server running locally on port ${PORT}`);
-        });
+// Only listen if running locally (Vercel exports the app automatically)
+if (!process.env.VERCEL) {
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+        console.log(`Server running locally on port ${PORT}`);
     });
 }
 
