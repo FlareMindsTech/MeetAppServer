@@ -51,3 +51,5 @@ node_modules/.cache/
 
 
 uploads/
+.vercel
+.env*.local
