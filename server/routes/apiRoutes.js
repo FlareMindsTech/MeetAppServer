@@ -31,6 +31,14 @@ import { getUserNotifications, markNotificationRead, createAnnouncement, deleteA
 import { getPerformanceReport, getEngagementMetrics, getAdminCourseReports, getStudentActivityReport, 
          getQuizPerformanceReport } from "../controller/analyticsController.js";
 
+import { 
+  createMeeting, 
+  allocateStudents, 
+  removeStudents, 
+  rescheduleMeeting, 
+  deleteMeeting, 
+  getCourseLiveClasses 
+} from "../controller/meetingController.js";
 
 
 import { upload } from "../config/multer.js"; 
@@ -97,6 +105,9 @@ router.get("/subscription/status", auth, studentOnly, getSubscriptionStatus); //
 router.post("/payment/create-subscription", auth, studentOnly, createSubscription);
 router.post("/payment/webhook", razorpayWebhook);
 
+// j) Live Classes / Meetings
+router.get("/courses/:courseId/live-classes", auth, studentOnly, getCourseLiveClasses);
+
 
 // ==============================================================================
 //                                ADMIN / INSTITUTE SIDE
@@ -160,5 +171,11 @@ router.get("/admin/payments", auth, adminOnly, getAllPayments);
 
 // //j notifications 
 // router.post("/admin/notifications/create", auth, adminOnly, createAnnouncement);
+// meetings
+router.post("/admin/meetings/create", auth, adminOnly, createMeeting);
+router.post("/admin/meetings/:meetingId/allocate-students", auth, adminOnly, allocateStudents);
+router.post("/admin/meetings/:meetingId/remove-students", auth, adminOnly, removeStudents);
+router.put("/admin/meetings/:meetingId/reschedule", auth, adminOnly, rescheduleMeeting);
+router.delete("/admin/meetings/:meetingId/delete", auth, adminOnly, deleteMeeting);
 
 export default router;
