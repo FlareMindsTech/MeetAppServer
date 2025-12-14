@@ -13,13 +13,13 @@ const adminOnly = checkRoles(["owner", "admin"]);
 // --- PUBLIC AUTH ---
 router.post("/auth/register", register);
 router.post("/auth/login", login);
+router.post("/auth/logout", logout);
 router.post("/auth/forgot-password", requestPasswordReset);
 router.post("/auth/reset-password/:resetToken", resetPassword);
 
 // --- ADMIN AUTH ---
 router.post("/auth/owner/create-admin", auth, ownerOnly, register);
 router.post("/auth/admin/create-student", auth, adminOnly, register);
-router.post("/admin/login", login);
-router.post("/admin/logout", auth, adminOnly, logout);
+
 
 export default router;

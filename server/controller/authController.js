@@ -8,7 +8,7 @@ import transporter from "./transporter.js";
 // @route   POST /api/auth/register
 export const register = async (req, res) => {
   try {
-    // 1. Get 'adminSecret' from body
+   
     const { FirstName, LastName, phoneNumber, email, password, role, adminSecret } = req.body;
 
     const existing = await User.findOne({ 
@@ -20,19 +20,18 @@ export const register = async (req, res) => {
     }
 
     // --- SECURITY LOGIC ---
-    let assignedRole = "student"; // Default is always student
+    let assignedRole = "student"; 
 
-    // Condition A: Logged in Admin/Owner creating a user
+    
     if (req.user && (req.user.role === "owner" || req.user.role === "admin")) {
         if (role) assignedRole = role; 
     }
     
-    // Condition B: "Backdoor" for creating the First Owner using Secret Key
-    // This allows you to create an Owner via Postman without being logged in
+   
     else if (adminSecret === process.env.OWNER_SECRET_KEY) {
-        if (role) assignedRole = role; // Allow 'owner' or 'admin'
+        if (role) assignedRole = role; 
     }
-    // ----------------------
+ 
 
     const newUser = new User({
       FirstName,
@@ -45,7 +44,7 @@ export const register = async (req, res) => {
 
     await newUser.save();
 
-    // Generate Token if public registration
+    
     let token = null;
     if (!req.user) {
         token = jwt.sign(
@@ -57,7 +56,7 @@ export const register = async (req, res) => {
 
     res.status(201).json({
       message: `User registered successfully as ${assignedRole}`,
-      token,
+      token, 
       user: {
         _id: newUser._id,
         email: newUser.email,
@@ -70,7 +69,8 @@ export const register = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-// @desc    Login user
+
+// @desc    Login user (Common for Student, Admin, Owner)
 // @route   POST /api/auth/login
 export const login = async (req, res) => {
   try {
@@ -82,6 +82,7 @@ export const login = async (req, res) => {
         .json({ message: "Email/Phone and password are required" });
     }
 
+    // Find user by Email OR Phone
     const user = await User.findOne({
       $or: [{ email: email }, { phoneNumber: phoneNumber || email }],
     });
@@ -100,6 +101,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
+    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
@@ -204,12 +206,11 @@ export const resetPassword = async (req, res) => {
   }
 };
 
+// @desc    Logout user
+// @route   POST /api/auth/logout
 export const logout = async (req, res) => {
   try {
-    // Since we are using JWTs stored in Client LocalStorage,
-    // the server doesn't need to do much logic here.
-    // (If you were using cookies, you would use: res.clearCookie('token'))
-
+    
     res.status(200).json({
       message: "Logged out successfully. Please clear your client token.",
     });
@@ -217,5 +218,3 @@ export const logout = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
-
