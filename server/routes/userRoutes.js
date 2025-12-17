@@ -7,7 +7,7 @@ import { upload } from "../config/multer.js";
 // Controllers
 import { getProfile, updatePassword, updateProfile } from "../controller/studentController.js";
 import { register } from "../controller/authController.js";
-import { deactivateStudent, getAllStudents, getStudentDetail } from "../controller/adminController.js";
+import { deactivateStudent, getAllStudents, getStudentDetail, updateStudentDetail, deleteStudent } from "../controller/adminController.js";
 import { markLessonComplete, getStudentProgress, getModuleProgress } from "../controller/progressController.js";
 
 // Roles
@@ -27,6 +27,7 @@ router.get("/progress/modules/:moduleId", auth, getModuleProgress);
 router.post("/admin/create-user", auth, adminOnly, register);
 router.get("/admin/students", auth, adminOnly, getAllStudents);
 router.get("/admin/students/:student_id", auth, adminOnly, getStudentDetail);
+router.put("/admin/update-students/:student_id", auth, adminOnly, upload.single("photo"), updateStudentDetail);
 router.post("/admin/students/:student_id/deactivate", auth, adminOnly, deactivateStudent);
-
+router.delete("/admin/students/:student_id/delete", auth, adminOnly, deleteStudent);
 export default router;

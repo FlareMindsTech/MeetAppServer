@@ -8,6 +8,12 @@ import User from "../Model/userSchema.js";
 // import path from "path";
 // import fs from "fs";
 
+
+const canManageTarget = (requesterRole, targetRole) => {
+    if (requesterRole === "owner") return true;
+    if (requesterRole === "admin" && targetRole === "student") return true;
+    return false;
+};
 // --- 1. MODULE MANAGEMENT ---
 
 // @desc    Add a Module to a Course
@@ -274,5 +280,92 @@ export const uploadResource = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+
+
+// @desc    Update Student Details
+// @route   PUT /api/admin/update-students/:student_id
+export const updateStudentDetail = async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    const requesterRole = req.user.role;
+
+    const updates = { ...req.body };
+
+    if (req.file) {
+        updates.photo = req.file.path; 
+    }
+
+    const targetUser = await User.findById(student_id);
+    if (!targetUser) return res.status(404).json({ message: "Student not found" });
+
+    if (!canManageTarget(requesterRole, targetUser.role)) {
+      return res.status(403).json({ 
+          message: `Access denied: You cannot update a ${targetUser.role}` 
+      });
+    }
+
+    if (updates.role) {
+        if (requesterRole === "admin" && updates.role !== "student") {
+            return res.status(403).json({ message: "Admins cannot promote users to Admin/Owner" });
+        }
+    }
+
+    const allowedUpdates = [
+        "FirstName", 
+        "LastName", 
+        "phoneNumber", 
+        "isActive", 
+        "role", 
+        "photo"
+    ];
+    allowedUpdates.forEach((field) => {
+
+      if (updates[field] !== undefined) {
+            targetUser[field] = updates[field];
+        }
+    });
+
+    await targetUser.save();
+
+    res.json({ 
+        message: "Student details updated successfully", 
+        user: targetUser 
+    });
+
+  } catch (err) {
+    console.error("Update Error:", err);
+    res.status(500).json({ message: "Server error updating student", error: err.message });
+  }
+};
+
+
+
+
+export const deleteStudent = async (req, res) => {
+  try {
+    const { student_id } = req.params;
+
+    const student = await User.findById(student_id);
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    if (student.role !== "student") {
+      return res.status(403).json({ 
+        message: "Access Denied: You can only delete Student accounts." 
+      });
+    }
+
+    await student.deleteOne();
+
+    res.json({ message: "Student deleted successfully" });
+
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.status(500).json({ message: "Server error deleting student", error: err.message });
   }
 };

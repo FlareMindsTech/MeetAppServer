@@ -2,9 +2,10 @@ import express from "express";
 const router = express.Router();
 import auth from "../middleware/authMiddleware.js";
 import checkRoles from "../middleware/rolesMiddleware.js";
+import { upload } from "../config/multer.js";
 
 // Controllers
-import { register, login, resetPassword, requestPasswordReset, logout } from "../controller/authController.js";
+import { register, login, resetPassword, requestPasswordReset, logout, getAllAdmins, updateAdmin, deleteAdmin } from "../controller/authController.js";
 
 // Roles
 const ownerOnly = checkRoles(["owner"]);
@@ -18,8 +19,11 @@ router.post("/auth/forgot-password", requestPasswordReset);
 router.post("/auth/reset-password/:resetToken", resetPassword);
 
 // --- ADMIN AUTH ---
-router.post("/auth/owner/create-admin", auth, ownerOnly, register);
-router.post("/auth/admin/create-student", auth, adminOnly, register);
+router.post("/admins/create", auth, ownerOnly, upload.single("photo"), register);
+router.get("/get-admins", auth, ownerOnly, getAllAdmins);
+router.put("/update-admins/:id", auth, ownerOnly, upload.single("photo"), updateAdmin);
+router.delete("/delete-admins/:id", auth, ownerOnly, deleteAdmin);
+
 
 
 export default router;

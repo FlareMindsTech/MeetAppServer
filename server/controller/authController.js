@@ -31,7 +31,10 @@ export const register = async (req, res) => {
     else if (adminSecret === process.env.OWNER_SECRET_KEY) {
         if (role) assignedRole = role; 
     }
- 
+    let photoUrl = "";
+    if (req.file) {
+       photoUrl = req.file.path;
+    }
 
     const newUser = new User({
       FirstName,
@@ -39,7 +42,9 @@ export const register = async (req, res) => {
       phoneNumber,
       email,
       password,
-      role: assignedRole 
+      role: assignedRole ,
+      isActive: true,
+      photo: photoUrl
     });
 
     await newUser.save();
@@ -214,6 +219,79 @@ export const logout = async (req, res) => {
     res.status(200).json({
       message: "Logged out successfully. Please clear your client token.",
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+
+
+
+
+// @desc    Get All Admins
+// @route   GET /api/owner/admins
+export const getAllAdmins = async (req, res) => {
+  try {
+    const admins = await User.find(
+      { role: "admin" }, 
+     
+      { 
+        subscribedCourses: 0,
+        __v: 0
+      } 
+    ).sort({ createdAt: -1 });
+
+    res.json(admins);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc    Update an Admin
+// @route   PUT /api/owner/admins/:id
+export const updateAdmin = async (req, res) => {
+
+    const { id } = req.params;
+    
+   
+    const updatedAdmin = await User.findByIdAndUpdate(
+        id,
+        {
+            $set: {
+                ...req.body, 
+                ...(req.file && { photo: req.file.path }) 
+            },
+            $unset: { subscribedCourses: "" } 
+        },
+        { new: true } 
+    );
+
+    if (!updatedAdmin) return res.status(404).json({ message: "Admin not found" });
+
+    res.json({ message: "Admin updated", admin: updatedAdmin });
+};
+
+
+
+// @desc    Delete an Admin
+// @route   DELETE /api/owner/admins/:id
+export const deleteAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const admin = await User.findById(id);
+
+    if (!admin) return res.status(404).json({ message: "Admin not found" });
+
+    if (admin.role !== "admin") {
+      return res.status(403).json({ message: "This route is only for deleting Admins" });
+    }
+
+    await admin.deleteOne();
+
+    res.json({ message: "Admin deleted successfully" });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
