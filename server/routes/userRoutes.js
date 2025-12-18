@@ -24,7 +24,7 @@ router.post("/progress/lessons/:lessonId", auth, markLessonComplete);
 router.get("/progress/modules/:moduleId", auth, getModuleProgress);
 
 // --- ADMIN STUDENT MANAGEMENT ---
-router.post("/admin/create-user", auth, adminOnly, register);
+router.post("/admin/create-student", auth, adminOnly, register);
 router.get("/admin/students", auth, adminOnly, getAllStudents);
 router.get("/admin/students/:student_id", auth, adminOnly, getStudentDetail);
 router.put("/admin/update-students/:student_id", auth, adminOnly, upload.single("photo"), updateStudentDetail);
