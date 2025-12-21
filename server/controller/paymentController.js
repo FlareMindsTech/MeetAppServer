@@ -641,3 +641,36 @@ export const getSubscriptionStatus = async (req, res) => {
     res.status(500).json({ message: err.message || "Internal Server Error" });
   }
 };
+
+
+export const getStudentPaymentHistory = async (req, res) => {
+  try {
+    const studentId = req.user.id;
+
+    
+    const payments = await Payment.find({ student: studentId })
+      .populate("course", "title thumbnail price") 
+      .sort({ createdAt: -1 }); 
+    if (!payments || payments.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    
+    const history = payments.map((pay) => ({
+      id: pay._id,
+      courseTitle: pay.course?.title || "Unknown Course",
+      courseThumbnail: pay.course?.thumbnail || null,
+      amount: pay.amount,
+      currency: "INR",
+      orderId: pay.razorpay_order_id,
+      paymentId: pay.razorpay_payment_id,
+      date: pay.createdAt,
+      status: "Success" 
+    }));
+
+    res.status(200).json(history);
+  } catch (err) {
+    console.error("getStudentPaymentHistory err:", err);
+    res.status(500).json({ message: err.message || "Internal Server Error" });
+  }
+};

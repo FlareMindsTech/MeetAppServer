@@ -11,6 +11,7 @@ import userRoutes from "./routes/userRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import quizRoutes from "./routes/quizRoutes.js";
 import featureRoutes from "./routes/featureRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -77,6 +78,7 @@ app.use("/api", userRoutes);
 app.use("/api", paymentRoutes);
 app.use("/api", quizRoutes);
 app.use("/api", featureRoutes);
+app.use("/api", chatRoutes);
 // --- START SERVER ---
 if (!process.env.VERCEL) {
     const PORT = process.env.PORT || 5000;
