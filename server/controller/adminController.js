@@ -94,36 +94,33 @@ export const createLesson = async (req, res) => {
       return res.status(400).json({ message: "Module ID, Title, and File are required" });
     }
 
-    let type = "text";
-    if (file.mimetype.startsWith("video")) {
-        type = "video";
-    } else if (file.mimetype.includes("pdf")) {
-        type = "pdf";
-    } else if (file.mimetype.startsWith("image")) {
-        type = "image";
-    }
+    
+    let type = "text"; 
+    const mime = file.mimetype.toLowerCase();
 
+    if (mime.startsWith("video/")) {
+        type = "video";
+    } else if (mime.includes("pdf") || file.originalname.toLowerCase().endsWith(".pdf")) {
+        type = "pdf";
+    }
     
-    // Multer-storage-cloudinary puts the full URL in 'file.path'
+    
     const contentUrl = file.path; 
-    
 
     const newLesson = await Lesson.create({
       module: moduleId,
       title,
-      type,
-      contentUrl: contentUrl, // Saves: https://res.cloudinary.com/
-      isFree: isFree === 'true',
-      duration: duration || 0,
-      order: order || 0
+      type, 
+      contentUrl: contentUrl,
+      isFree: isFree === 'true' || isFree === true,
+      duration: Number(duration) || 0,
+      order: Number(order) || 0
     });
 
     res.status(201).json(newLesson);
   } catch (err) {
-    console.error("FULL ERROR DETAILS:", JSON.stringify(err, null, 2));
-    console.error("ERROR MESSAGE:", err.message);
-    console.error(err);
-   res.status(500).json({ message: err.message || "Server Error" });
+    console.error("CREATE LESSON ERROR:", err);
+    res.status(500).json({ message: err.message || "Server Error" });
   }
 };
 
