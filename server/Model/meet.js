@@ -12,6 +12,11 @@ const meetingSchema = new mongoose.Schema(
       ref: "Course",
       default: null,
     },
+    meetingUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     date: {
       type: Date,
       required: true,

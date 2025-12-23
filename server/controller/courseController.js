@@ -6,6 +6,7 @@ import transporter from "./transporter.js";
 import Subscription from "../Model/subscription.js"; 
 import Module from "../Model/module.js";  
 import Lesson from "../Model/lesson.js"; 
+import Meeting from "../Model/meet.js";
 // --- 1. PUBLIC & STUDENT APIs ---
 
 // @desc    List all courses (Public)
@@ -32,18 +33,58 @@ export const getPublicCourses = async (req, res) => {
 // @route   GET /api/courses/:id
 export const getCourseDetails = async (req, res) => {
   try {
+    const studentId = req.user?.id;
     const course = await Course.findById(req.params.id).lean();
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    // Fetch Modules for this course
+    // 1. Fetch Modules for this course
     const modules = await Module.find({ course: req.params.id })
       .sort("order")
       .lean();
 
-    // Return course data merged with modules
-    res.json({ ...course, modules });
+    // Fetch Lessons for each Module
+    const modulesWithLessons = await Promise.all(
+      modules.map(async (module) => {
+        const lessons = await Lesson.find({ module: module._id })
+          .sort("order")
+          .lean();
+        return { ...module, lessons };
+      })
+    );
+
+    // 2. Fetch Live Meetings for this course
+    const meetings = await Meeting.find({ courseId: req.params.id })
+      .sort({ date: 1, startTime: 1 })
+      .lean();
+
+    // 3. Security Check: Is the user authorized to see the URL?
+    let isSubscribed = false;
+    if (studentId) {
+        const student = await User.findById(studentId);
+        const now = new Date();
+        isSubscribed = student?.subscribedCourses?.some(
+            (sub) => sub.courseId.toString() === req.params.id && sub.expiresAt > now
+        );
+    }
+
+    const isAdmin = ["admin", "owner"].includes(req.user?.role?.toLowerCase());
+
+    const securedMeetings = meetings.map(m => {
+        // Only return meetingUrl if subscribed or admin
+        if (!isSubscribed && !isAdmin) {
+            const { meetingUrl, ...rest } = m; 
+            return { ...rest, meetingUrl: null }; 
+        }
+        return m;
+    });
+
+    res.json({ 
+      ...course, 
+      modules: modulesWithLessons, 
+      liveMeetings: securedMeetings || [] 
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -260,12 +301,12 @@ export const getAllCourses = async (req, res) => {
 
     const coursesWithContent = await Promise.all(
       courses.map(async (course) => {
-        // Get Modules
+        // 1. Get Modules
         const modules = await Module.find({ course: course._id })
           .sort("order")
           .lean();
 
-        // Loop through Modules to get Lessons
+        // 2. Get Lessons for each Module
         const modulesWithLessons = await Promise.all(
           modules.map(async (module) => {
             const lessons = await Lesson.find({ module: module._id })
@@ -279,9 +320,15 @@ export const getAllCourses = async (req, res) => {
           })
         );
 
+        // 3. Get Live Meetings for this course
+        const liveMeetings = await Meeting.find({ courseId: course._id })
+          .sort({ date: 1, startTime: 1 })
+          .lean();
+
         return {
           ...course,
           modules: modulesWithLessons,
+          liveMeetings: liveMeetings, // Attached meetings to course response
         };
       })
     );
@@ -291,7 +338,6 @@ export const getAllCourses = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
 // @desc    Get just the modules (for dropdowns/lists)
 // @route   GET /api/courses/:id/modules
 export const getCourseModules = async (req, res) => {

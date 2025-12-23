@@ -12,6 +12,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import quizRoutes from "./routes/quizRoutes.js";
 import featureRoutes from "./routes/featureRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
+import meetingRoutes from "./routes/meetingRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -79,6 +80,7 @@ app.use("/api", paymentRoutes);
 app.use("/api", quizRoutes);
 app.use("/api", featureRoutes);
 app.use("/api", chatRoutes);
+app.use("/api/meetings", meetingRoutes);
 // --- START SERVER ---
 if (!process.env.VERCEL) {
     const PORT = process.env.PORT || 5000;
