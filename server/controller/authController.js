@@ -251,29 +251,50 @@ export const getAllAdmins = async (req, res) => {
 // @desc    Update an Admin
 // @route   PUT /api/owner/admins/:id
 export const updateAdmin = async (req, res) => {
-
     const { id } = req.params;
     
-   
-    const updatedAdmin = await User.findByIdAndUpdate(
-        id,
-        {
-            $set: {
-                ...req.body, 
-                ...(req.file && { photo: req.file.path }) 
-            },
-            $unset: { subscribedCourses: "" } 
-        },
-        { new: true } 
-    );
+    const { FirstName, LastName, email, password, role, phoneNumber } = req.body;
 
-    if (!updatedAdmin) return res.status(404).json({ message: "Admin not found" });
+    try {
+        const admin = await User.findById(id);
+        if (!admin) return res.status(404).json({ message: "Admin not found" });
 
-    res.json({ message: "Admin updated", admin: updatedAdmin });
+  
+        if (FirstName) admin.FirstName = FirstName;
+        if (LastName) admin.LastName = LastName;
+        if (email) admin.email = email;
+        if (phoneNumber) admin.phoneNumber = phoneNumber;
+
+        if (role) admin.role = role;
+
+  
+        if (password) {
+            const salt = await bcrypt.genSalt(10);
+            admin.password = await bcrypt.hash(password, salt);
+        }
+
+    
+        if (req.file) admin.photo = req.file.path;
+
+        admin.subscribedCourses = undefined; 
+
+        const updatedAdmin = await admin.save();
+
+        const result = updatedAdmin.toObject();
+        delete result.password;
+
+        res.json({ 
+            message: "Admin updated successfully", 
+            admin: result 
+        });
+
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(400).json({ message: "Email already exists" });
+        }
+        res.status(500).json({ message: "Error updating admin", error: error.message });
+    }
 };
-
-
-
 // @desc    Delete an Admin
 // @route   DELETE /api/owner/admins/:id
 export const deleteAdmin = async (req, res) => {
