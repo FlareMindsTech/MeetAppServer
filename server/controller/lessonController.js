@@ -7,17 +7,29 @@ export const getModuleLessons = async (req, res) => {
   try {
     const { moduleId } = req.params;
 
+    const userRole = req.user.role;
+    const isPrivileged = userRole === "admin" || userRole === "owner";
+
     const lessons = await Lesson.find({ module: moduleId })
       .sort({ order: 1 })
       .lean();
 
-    const sanitizedLessons = lessons.map((lesson) => ({
-      _id: lesson._id,
-      title: lesson.title,
-      type: lesson.type,
-      isFree: lesson.isFree,
-      duration: lesson.duration,
-    }));
+    const sanitizedLessons = lessons.map((lesson) => {
+      const lessonData = {
+        _id: lesson._id,
+        title: lesson.title,
+        type: lesson.type,
+        isFree: lesson.isFree,
+        duration: lesson.duration,
+      };
+
+      if (isPrivileged) {
+        lessonData.contentUrl = lesson.contentUrl;
+        lessonData.message = "Admin/Owner View: Full Access";
+      }
+
+      return lessonData;
+    });
 
     res.json(sanitizedLessons);
   } catch (err) {
@@ -26,12 +38,17 @@ export const getModuleLessons = async (req, res) => {
   }
 };
 
+
 // @desc    Fetch lesson details (content URL, type)
 // @route   GET /api/lessons/:lessonId
 export const getLessonDetails = async (req, res) => {
   try {
     const { lessonId } = req.params;
     const studentId = req.user.id;
+    const userRole = req.user.role;
+
+    const canBypassSubscription =
+      userRole === "admin" || userRole === "owner";
 
     const lesson = await Lesson.findById(lessonId).populate("module");
 
@@ -39,26 +56,25 @@ export const getLessonDetails = async (req, res) => {
       return res.status(404).json({ message: "Lesson not found" });
     }
 
-    // Safety check: Ensure module/course links exist
     if (!lesson.module || !lesson.module.course) {
-      // Fallback if data is incomplete (prevents crash)
       console.error("Data Error: Lesson missing module or course link");
       return res.status(500).json({ message: "Lesson data is corrupted." });
     }
 
-    // 2. If free, return immediately
-    if (lesson.isFree) {
+    if (lesson.isFree || canBypassSubscription) {
       return res.json(lesson);
     }
 
-    // 3. If paid, Check Subscription
     const student = await User.findById(studentId);
     const now = new Date();
     const courseIdToCheck = lesson.module.course.toString();
 
     const isSubscribed = student.subscribedCourses.find((sub) => {
       if (!sub.courseId) return false;
-      return sub.courseId.toString() === courseIdToCheck && sub.expiresAt > now;
+      return (
+        sub.courseId.toString() === courseIdToCheck &&
+        sub.expiresAt > now
+      );
     });
 
     if (isSubscribed) {
@@ -69,7 +85,7 @@ export const getLessonDetails = async (req, res) => {
         title: lesson.title,
         type: lesson.type,
         isFree: lesson.isFree,
-        contentUrl: null, // Hide URL
+        contentUrl: null,
         message: "You must purchase the course to view this lesson.",
       });
     }

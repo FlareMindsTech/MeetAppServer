@@ -643,19 +643,58 @@ export const getSubscriptionStatus = async (req, res) => {
 };
 
 
-export const getStudentPaymentHistory = async (req, res) => {
-  try {
-    const studentId = req.user.id;
 
-    
-    const payments = await Payment.find({ student: studentId })
-      .populate("course", "title thumbnail price") 
-      .sort({ createdAt: -1 }); 
+
+export const getPaymentHistoryByStudent = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    // FIX: Convert String ID to ObjectId for safer querying
+    const objectId = new mongoose.Types.ObjectId(studentId);
+
+    const payments = await Payment.find({ student: objectId })
+      .populate("course", "title thumbnail")
+      .sort({ createdAt: -1 });
+
     if (!payments || payments.length === 0) {
       return res.status(200).json([]);
     }
 
-    
+    const history = payments.map((pay) => ({
+      id: pay._id,
+      courseTitle: pay.course?.title || "Unknown Course",
+      amount: pay.amount,
+      currency: "INR",
+      orderId: pay.razorpay_order_id,
+      paymentId: pay.razorpay_payment_id,
+      date: pay.createdAt,
+      status: "Success",
+    }));
+
+    res.status(200).json(history);
+  } catch (err) {
+    console.error("getPaymentHistoryByStudent err:", err);
+    res.status(500).json({ message: err.message || "Internal Server Error" });
+  }
+};
+
+
+
+//new laptop
+export const getStudentPaymentHistory = async (req, res) => {
+  try {
+    const studentId = req.user.id;
+
+    const objectId = new mongoose.Types.ObjectId(studentId);
+
+    const payments = await Payment.find({ student: objectId })
+      .populate("course", "title thumbnail price")
+      .sort({ createdAt: -1 });
+
+    if (!payments || payments.length === 0) {
+      return res.status(200).json([]);
+    }
+
     const history = payments.map((pay) => ({
       id: pay._id,
       courseTitle: pay.course?.title || "Unknown Course",
@@ -665,7 +704,7 @@ export const getStudentPaymentHistory = async (req, res) => {
       orderId: pay.razorpay_order_id,
       paymentId: pay.razorpay_payment_id,
       date: pay.createdAt,
-      status: "Success" 
+      status: "Success",
     }));
 
     res.status(200).json(history);

@@ -5,7 +5,10 @@ import {
   removeStudents,
   rescheduleMeeting,
   deleteMeeting,
-  getCourseLiveClasses
+  getCourseLiveClasses,
+  getAllMeetings,
+  getMyMeetings,
+  joinMeeting
 } from "../controller/meetingController.js"; 
 import auth from "../middleware/authMiddleware.js"; 
 
@@ -26,5 +29,11 @@ router.put("/:id/reschedule", auth, rescheduleMeeting);
 router.delete("/:id", auth, deleteMeeting);
 
 router.get("/course/:courseId", auth, getCourseLiveClasses);
+
+router.get("/", auth, getAllMeetings);
+
+
+router.get("/my-meetings", auth, getMyMeetings);
+router.post("/join/:id", auth, joinMeeting);
 
 export default router;
