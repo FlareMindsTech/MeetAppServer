@@ -6,6 +6,7 @@ import transporter from "./transporter.js";
 import Subscription from "../Model/subscription.js";
 import Module from "../Model/module.js";
 import Lesson from "../Model/lesson.js";
+import Progress from "../Model/progress.js";
 // import Meeting from "../Model/meet.js";
 // --- 1. PUBLIC & STUDENT APIs ---
 
