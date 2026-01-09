@@ -5,7 +5,9 @@ import User from "../Model/userSchema.js";
 import Payment from "../Model/payment.js";
 import Subscription from "../Model/subscription.js";
 import transporter from "./transporter.js";
-
+import mongoose from "mongoose";
+import Lesson from "../Model/lesson.js";
+import Module from "../Model/module.js";
 /* ---------------- Helper: Email ---------------- */
 async function sendEnrollmentEmail({ student, course, subjectSuffix, messageLines = [], expiresAt = null }) {
   try {
@@ -642,34 +644,76 @@ export const getSubscriptionStatus = async (req, res) => {
   }
 };
 
-
-
-
 export const getPaymentHistoryByStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ message: "Invalid Student ID format" });
+    }
 
-    // FIX: Convert String ID to ObjectId for safer querying
     const objectId = new mongoose.Types.ObjectId(studentId);
 
+    // Fetch payments for specific student
     const payments = await Payment.find({ student: objectId })
-      .populate("course", "title thumbnail")
-      .sort({ createdAt: -1 });
+      .populate("course", "title thumbnail price description")
+      .sort({ createdAt: -1 })
+      .lean();
 
     if (!payments || payments.length === 0) {
       return res.status(200).json([]);
     }
 
-    const history = payments.map((pay) => ({
-      id: pay._id,
-      courseTitle: pay.course?.title || "Unknown Course",
-      amount: pay.amount,
-      currency: "INR",
-      orderId: pay.razorpay_order_id,
-      paymentId: pay.razorpay_payment_id,
-      date: pay.createdAt,
-      status: "Success",
-    }));
+    // Manual reverse lookup for content details
+    const history = await Promise.all(
+      payments.map(async (pay) => {
+        const course = pay.course;
+        let modulesData = [];
+
+        if (course && course._id) {
+          const modules = await Module.find({ course: course._id }).sort({ order: 1 }).lean();
+          modulesData = await Promise.all(
+            modules.map(async (mod) => {
+              const lessons = await Lesson.find({ module: mod._id })
+                .sort({ order: 1 })
+                .select("title duration type isFree contentUrl") 
+                .lean();
+
+              return {
+                id: mod._id,
+                moduleTitle: mod.title,
+                totalLessons: lessons.length,
+                lessons: lessons.map(l => ({
+                  id: l._id,
+                  title: l.title,
+                  duration: l.duration,
+                  type: l.type,
+                  isFree: l.isFree,
+                  url: l.contentUrl
+                }))
+              };
+            })
+          );
+        }
+
+        return {
+          id: pay._id,
+          courseId: course?._id || null,
+          courseTitle: course?.title || "Unknown Course",
+          courseThumbnail: course?.thumbnail || null,
+          amount: pay.amount,
+          currency: "INR",
+          orderId: pay.razorpay_order_id,
+          paymentId: pay.razorpay_payment_id,
+          date: pay.createdAt,
+          status: "Success",
+          contentSummary: {
+            totalModules: modulesData.length,
+            modules: modulesData
+          }
+        };
+      })
+    );
 
     res.status(200).json(history);
   } catch (err) {
@@ -678,34 +722,89 @@ export const getPaymentHistoryByStudent = async (req, res) => {
   }
 };
 
-
-
-//new laptop
 export const getStudentPaymentHistory = async (req, res) => {
   try {
     const studentId = req.user.id;
-
     const objectId = new mongoose.Types.ObjectId(studentId);
 
+    const student = await User.findById(studentId).lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
     const payments = await Payment.find({ student: objectId })
-      .populate("course", "title thumbnail price")
-      .sort({ createdAt: -1 });
+      .populate("course", "title thumbnail price description")
+      .sort({ createdAt: -1 })
+      .lean();
 
     if (!payments || payments.length === 0) {
       return res.status(200).json([]);
     }
 
-    const history = payments.map((pay) => ({
-      id: pay._id,
-      courseTitle: pay.course?.title || "Unknown Course",
-      courseThumbnail: pay.course?.thumbnail || null,
-      amount: pay.amount,
-      currency: "INR",
-      orderId: pay.razorpay_order_id,
-      paymentId: pay.razorpay_payment_id,
-      date: pay.createdAt,
-      status: "Success",
-    }));
+    const history = await Promise.all(
+      payments.map(async (pay) => {
+        const course = pay.course;
+        let modulesData = [];
+        
+        const paymentStatus = pay.status ? pay.status.toLowerCase() : "success";
+        const isPaid = ["success", "completed", "captured", "active"].includes(paymentStatus);
+
+        const subscriptionInfo = student.subscribedCourses?.find(
+          (sub) => String(sub.courseId) === String(course?._id)
+        );
+        const expiresAt = subscriptionInfo?.expiresAt || null;
+
+        if (course && course._id) {
+          const modules = await Module.find({ course: course._id }).sort({ order: 1 }).lean();
+
+          modulesData = await Promise.all(
+            modules.map(async (mod) => {
+              const lessons = await Lesson.find({ module: mod._id })
+                .sort({ order: 1 })
+                .select("title duration type isFree contentUrl asset") 
+                .lean();
+
+              return {
+                id: mod._id,
+                moduleTitle: mod.title,
+                totalLessons: lessons.length,
+                lessons: lessons.map(l => {
+                  const hasAccess = l.isFree === true || isPaid;
+                  const secureUrl = hasAccess ? (l.contentUrl || null) : null;
+
+                  return {
+                    id: l._id,
+                    title: l.title,
+                    duration: l.duration,
+                    type: l.type,
+                    isFree: l.isFree,
+                    contentUrl: secureUrl,
+                    asset: hasAccess ? (l.asset || null) : null
+                  };
+                })
+              };
+            })
+          );
+        }
+
+        return {
+          id: pay._id,
+          courseId: course?._id || null,
+          courseTitle: course?.title || "Unknown Course",
+          courseThumbnail: course?.thumbnail || null,
+          amount: pay.amount,
+          currency: pay.currency || "INR",
+          orderId: pay.razorpay_order_id,
+          paymentId: pay.razorpay_payment_id,
+          date: pay.createdAt,
+          expiresAt: expiresAt, 
+          status: pay.status || "Success",
+          isPurchased: isPaid,
+          contentSummary: {
+            totalModules: modulesData.length,
+            modules: modulesData
+          }
+        };
+      })
+    );
 
     res.status(200).json(history);
   } catch (err) {
