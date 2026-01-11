@@ -23,7 +23,7 @@ const adminOnly = checkRoles(["owner", "admin"]);
 
 // --- STUDENT / PUBLIC ---
 router.get("/courses", getPublicCourses);
-router.get("/courses/:id", getCourseDetails);
+router.get("/courses/:id", auth, getCourseDetails);
 router.get("/courses/:id/modules", getCourseModules);
 router.post("/courses/:id/enroll", auth, enrollStudent);
 

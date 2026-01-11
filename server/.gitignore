@@ -53,3 +53,8 @@ node_modules/.cache/
 uploads/
 .vercel
 .env*.local
+
+
+
+
+payment_tester.html

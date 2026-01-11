@@ -31,64 +31,129 @@ export const getPublicCourses = async (req, res) => {
 
 // @desc    Get Single Course Details with Modules (Public/Student)
 // @route   GET /api/courses/:id
+// export const getCourseDetails = async (req, res) => {
+//   try {
+//     const studentId = req.user?.id;
+//     const course = await Course.findById(req.params.id).lean();
+//     if (!course) {
+//       return res.status(404).json({ message: "Course not found" });
+//     }
+
+//     // 1. Fetch Modules for this course
+//     const modules = await Module.find({ course: req.params.id })
+//       .sort("order")
+//       .lean();
+
+//     // Fetch Lessons for each Module
+//     const modulesWithLessons = await Promise.all(
+//       modules.map(async (module) => {
+//         const lessons = await Lesson.find({ module: module._id })
+//           .sort("order")
+//           .lean();
+//         return { ...module, lessons };
+//       })
+//     );
+
+//     // 2. Fetch Live Meetings for this course
+//     const meetings = await Meeting.find({ courseId: req.params.id })
+//       .sort({ date: 1, startTime: 1 })
+//       .lean();
+
+//     // 3. Security Check: Is the user authorized to see the URL?
+//     let isSubscribed = false;
+//     if (studentId) {
+//         const student = await User.findById(studentId);
+//         const now = new Date();
+//         isSubscribed = student?.subscribedCourses?.some(
+//             (sub) => sub.courseId.toString() === req.params.id && sub.expiresAt > now
+//         );
+//     }
+
+//     const isAdmin = ["admin", "owner"].includes(req.user?.role?.toLowerCase());
+
+//     const securedMeetings = meetings.map(m => {
+//         // Only return meetingUrl if subscribed or admin
+//         if (!isSubscribed && !isAdmin) {
+//             const { meetingUrl, ...rest } = m; 
+//             return { ...rest, meetingUrl: null }; 
+//         }
+//         return m;
+//     });
+
+//     res.json({ 
+//       ...course, 
+//       modules: modulesWithLessons, 
+//       liveMeetings: securedMeetings || [] 
+//     });
+//   } catch (err) {
+//     res.status(500).json({ message: err.message });
+//   }
+// };
+
+
+
 export const getCourseDetails = async (req, res) => {
   try {
     const studentId = req.user?.id;
+    // Normalize role to lowercase to prevent "Admin" vs "admin" mismatch
+    const userRole = (req.user?.role || "").toLowerCase().trim();
+    
+    // Define who is staff
+    const isStaff = userRole === "admin" || userRole === "owner";
+
     const course = await Course.findById(req.params.id).lean();
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    // 1. Check Subscription only for Students
+    let isSubscribed = false;
+    if (studentId && !isStaff) {
+      const student = await User.findById(studentId);
+      const now = new Date();
+      isSubscribed = student?.subscribedCourses?.some(
+        (sub) => sub.courseId.toString() === req.params.id && sub.expiresAt > now
+      );
     }
 
-    // 1. Fetch Modules for this course
-    const modules = await Module.find({ course: req.params.id })
-      .sort("order")
-      .lean();
+    // 2. Fetch Modules & Lessons
+    const modules = await Module.find({ course: req.params.id }).sort("order").lean();
 
-    // Fetch Lessons for each Module
     const modulesWithLessons = await Promise.all(
       modules.map(async (module) => {
-        const lessons = await Lesson.find({ module: module._id })
-          .sort("order")
-          .lean();
-        return { ...module, lessons };
+        const lessons = await Lesson.find({ module: module._id }).sort("order").lean();
+        
+        const securedLessons = lessons.map(lesson => {
+          // staff (admin/owner) OR subscribed student OR free lesson = SHOW URL
+          if (isStaff || isSubscribed || lesson.isFree === true) {
+            return lesson; 
+          }
+          // Otherwise hide the URL
+          const { contentUrl, ...lessonData } = lesson;
+          return { ...lessonData, contentUrl: null };
+        });
+
+        return { ...module, lessons: securedLessons };
       })
     );
 
-    // 2. Fetch Live Meetings for this course
-    const meetings = await Meeting.find({ courseId: req.params.id })
-      .sort({ date: 1, startTime: 1 })
-      .lean();
-
-    // 3. Security Check: Is the user authorized to see the URL?
-    let isSubscribed = false;
-    if (studentId) {
-        const student = await User.findById(studentId);
-        const now = new Date();
-        isSubscribed = student?.subscribedCourses?.some(
-            (sub) => sub.courseId.toString() === req.params.id && sub.expiresAt > now
-        );
-    }
-
-    const isAdmin = ["admin", "owner"].includes(req.user?.role?.toLowerCase());
-
+    // 3. Fetch & Secure Meetings
+    const meetings = await Meeting.find({ courseId: req.params.id }).sort({ date: 1 }).lean();
     const securedMeetings = meetings.map(m => {
-        // Only return meetingUrl if subscribed or admin
-        if (!isSubscribed && !isAdmin) {
-            const { meetingUrl, ...rest } = m; 
-            return { ...rest, meetingUrl: null }; 
-        }
-        return m;
+        // Staff and Subscribed students see the link
+        if (isStaff || isSubscribed) return m;
+        return { ...m, meetingUrl: null };
     });
 
     res.json({ 
       ...course, 
       modules: modulesWithLessons, 
-      liveMeetings: securedMeetings || [] 
+      liveMeetings: securedMeetings 
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
+
 
 // @desc    Enroll a student (Manual Subscription / Free Enrollment)
 // @route   POST /api/courses/:id/enroll

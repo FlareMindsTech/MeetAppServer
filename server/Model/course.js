@@ -24,6 +24,7 @@ const courseSchema = new mongoose.Schema(
     durationInDays: { type: Number, default: 365 },
     thumbnail: String,
     isLiveCourse: { type: Boolean, default: false },
+    isRecurring: { type: Boolean, default: false },
 
     // PAYMENT OPTIONS for this course
     paymentOptions: {
