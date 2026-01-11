@@ -9,8 +9,19 @@ import bcrypt from "bcryptjs";
 // @route   GET /api/user/profile
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password -rawPassword");
+    const user = await User.findById(req.user.id)
+      .select("-password -rawPassword")
+      .populate({
+        path: "subscribedCourses.courseId",
+        select: "title description category price duration durationInDays thumbnail isLiveCourse isRecurring"
+      });
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Filter out subscriptions where the referenced course has been deleted (courseId is null)
+    user.subscribedCourses = user.subscribedCourses.filter(
+      (sub) => sub.courseId !== null
+    );
+
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: err.message });
