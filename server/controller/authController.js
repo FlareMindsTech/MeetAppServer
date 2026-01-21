@@ -60,7 +60,7 @@ export const register = async (req, res) => {
         token = jwt.sign(
             { id: newUser._id, role: newUser.role, email: newUser.email, sessionId: sessionId },
             process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+            { expiresIn: "30d" }
         );
     }
 
@@ -122,7 +122,7 @@ export const login = async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email, sessionId: sessionId },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: "30d" }
     );
 
     res.json({
