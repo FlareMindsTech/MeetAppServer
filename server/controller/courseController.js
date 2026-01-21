@@ -20,7 +20,7 @@ export const getPublicCourses = async (req, res) => {
     if (type === "live") filter.isLiveCourse = true;
 
     const courses = await Course.find(filter)
-      .select("title description thumbnail price isLiveCourse duration category")
+      .select("title description thumbnail price discount isLiveCourse duration category")
       .sort({ createdAt: -1 });
 
     res.json(courses);
@@ -294,6 +294,7 @@ export const createCourse = async (req, res) => {
       isLiveCourse: isLiveCourse === "true",
       paymentOptions:parsedPaymentOptions,
       durationInDays: Number(durationInDays),
+      discount: Number(req.body.discount || 0),
     });
 
     return res.status(201).json(course);
@@ -322,7 +323,11 @@ export const updateCourse = async (req, res) => {
     course.createdBy = createdBy || course.createdBy;
     course.duration = duration || course.duration;
     course.isLiveCourse = isLiveCourse === "true";
+
     course.durationInDays = Number(durationInDays) || course.durationInDays;
+    if (req.body.discount !== undefined) {
+      course.discount = Number(req.body.discount);
+    }
 
     if (req.file) {
       course.thumbnail = req.file.path;

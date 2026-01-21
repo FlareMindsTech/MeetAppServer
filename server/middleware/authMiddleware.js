@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
+import User from "../Model/userSchema.js"; // Import User model
 
 // Auth middleware: checks JWT
-export default function auth(req, res, next) {
+export default async function auth(req, res, next) {
   const authHeader = req.header("Authorization");
   // 1Header missing
   if (!authHeader) {
@@ -19,7 +20,24 @@ export default function auth(req, res, next) {
   // Verify JWT
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
-    req.user = decoded; // contains { id, role, email }
+    
+    // Check if session is valid (Single Device Logic)
+    const user = await User.findById(decoded.id).select("sessionId role email");
+    
+    if (!user) {
+       return res.status(401).json({ error: "User not found" });
+    }
+
+    if (decoded.sessionId && user.sessionId && decoded.sessionId !== user.sessionId) {
+       return res.status(401).json({ error: "Session expired. You logged in on another device." });
+    }
+
+    // Determine strictness: if token has no sessionId but user has one, force logout?
+    // backward compatibility: if old token (no sessionId) presented, allow or deny?
+    // Let's enforce: If DB has sessionId, Token MUST match. 
+    // If Token has no sessionId (old token), it will fail equality check if DB has one.
+    
+    req.user = decoded; // contains { id, role, email, sessionId }
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });

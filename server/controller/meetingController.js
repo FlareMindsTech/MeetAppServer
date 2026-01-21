@@ -38,6 +38,32 @@ function calculateDuration(startTime, endTime) {
   return duration;
 }
 
+// Helper: calculate status
+function calculateMeetingStatus(meeting) {
+  const now = new Date();
+  const meetingDate = new Date(meeting.date);
+
+  // Parse start and end times
+  const startParam = parseAMPM(meeting.startTime);
+  const endParam = parseAMPM(meeting.endTime);
+
+  if (!startParam || !endParam) return "upcoming"; // Default fallback
+
+  const startTime = new Date(meetingDate);
+  startTime.setHours(startParam.hours, startParam.minutes, 0, 0);
+
+  const endTime = new Date(meetingDate);
+  endTime.setHours(endParam.hours, endParam.minutes, 0, 0);
+
+  if (now < startTime) {
+    return "upcoming";
+  } else if (now >= startTime && now <= endTime) {
+    return "ongoing";
+  } else {
+    return "completed";
+  }
+}
+
 // ---------------------------
 // Create Meeting Controller
 // ---------------------------
@@ -544,9 +570,15 @@ export const getAllMeetings = async (req, res) => {
     const meetings = await Meeting.find({})
       .sort({ date: -1 })
       .populate("courseId", "title")
-      .populate("students.studentId", "FirstName email");
+      .populate("students.studentId", "FirstName email")
+      .lean();
 
-    res.json(meetings);
+    const meetingsWithStatus = meetings.map((meeting) => ({
+      ...meeting,
+      status: calculateMeetingStatus(meeting),
+    }));
+
+    res.json(meetingsWithStatus);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -562,12 +594,19 @@ export const getMyMeetings = async (req, res) => {
     
     const meetings = await Meeting.find({
       "students.studentId": studentId,
-      deleteAt: { $gte: new Date() },
+      // Removed deleteAt filter to show history
+      // deleteAt: { $gte: new Date() },
     })
       .select("-students") 
-      .sort({ date: 1, startTime: 1 });
+      .sort({ date: -1, startTime: 1 }) // Sort by date descending for history
+      .lean();
 
-    res.json({ count: meetings.length, meetings });
+    const meetingsWithStatus = meetings.map((meeting) => ({
+      ...meeting,
+      status: calculateMeetingStatus(meeting),
+    }));
+
+    res.json({ count: meetingsWithStatus.length, meetings: meetingsWithStatus });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

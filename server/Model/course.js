@@ -19,6 +19,7 @@ const courseSchema = new mongoose.Schema(
     description: String,
     category: String,
     price: { type: Number, required: true }, // base price
+    discount: { type: Number, default: 0 }, // discount percentage
     createdBy: String,
     duration: String,
     durationInDays: { type: Number, default: 365 },

@@ -52,8 +52,13 @@ export const register = async (req, res) => {
     
     let token = null;
     if (!req.user) {
+        // For fresh registration auto-login, we could also start a session
+        const sessionId = crypto.randomBytes(16).toString("hex");
+        newUser.sessionId = sessionId;
+        await newUser.save(); // Save again with sessionId
+
         token = jwt.sign(
-            { id: newUser._id, role: newUser.role, email: newUser.email },
+            { id: newUser._id, role: newUser.role, email: newUser.email, sessionId: sessionId },
             process.env.JWT_SECRET,
             { expiresIn: "1d" }
         );
@@ -108,10 +113,14 @@ export const login = async (req, res) => {
 
     // Update last login
     user.lastLogin = new Date();
+    // Generate new Session ID
+    const sessionId = crypto.randomBytes(16).toString("hex");
+    user.sessionId = sessionId;
+    
     await user.save();
 
     const token = jwt.sign(
-      { id: user._id, role: user.role, email: user.email },
+      { id: user._id, role: user.role, email: user.email, sessionId: sessionId },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );

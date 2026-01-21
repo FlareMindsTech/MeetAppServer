@@ -8,6 +8,13 @@ import transporter from "./transporter.js";
 import mongoose from "mongoose";
 import Lesson from "../Model/lesson.js";
 import Module from "../Model/module.js";
+/* ---------------- Helper: Discount ---------------- */
+const getDiscountedPrice = (course) => {
+  if (!course.discount || course.discount <= 0) return course.price;
+  const discountAmount = (course.price * course.discount) / 100;
+  return Math.round(course.price - discountAmount);
+};
+
 /* ---------------- Helper: Email ---------------- */
 async function sendEnrollmentEmail({ student, course, subjectSuffix, messageLines = [], expiresAt = null }) {
   try {
@@ -115,7 +122,8 @@ export const createOrder = async (req, res) => {
     );
     if (isSubscribed) return res.status(400).json({ message: "You are already subscribed to this course" });
 
-    const amountInPaise = Math.round(Number(course.price || 0) * 100);
+    const finalPrice = getDiscountedPrice(course);
+    const amountInPaise = Math.round(Number(finalPrice || 0) * 100);
     const options = {
       amount: amountInPaise,
       currency: "INR",
@@ -128,7 +136,7 @@ export const createOrder = async (req, res) => {
       student: student._id,
       course: course._id,
       type: "one-time",
-      amount: Number(course.price),
+      amount: Number(finalPrice),
       currency: "INR",
       razorpay_order_id: order.id,
       status: "pending",
@@ -198,7 +206,7 @@ export const verifyPayment = async (req, res) => {
     }
     await student.save();
 
-    await Payment.create({ student: studentId, course: courseId, razorpay_order_id, razorpay_payment_id, razorpay_signature, amount: course.price });
+    await Payment.create({ student: studentId, course: courseId, razorpay_order_id, razorpay_payment_id, razorpay_signature, amount: getDiscountedPrice(course) });
 
     await Subscription.findOneAndUpdate(
       { student: studentId, course: courseId, type: "one-time", razorpay_order_id },
@@ -210,7 +218,7 @@ export const verifyPayment = async (req, res) => {
           paymentHistory: {
             payment_id: razorpay_payment_id,
             order_id: razorpay_order_id,
-            amount: course.price,
+            amount: getDiscountedPrice(course),
             currency: "INR",
             status: "paid",
             paidAt: new Date(),
@@ -496,7 +504,8 @@ export const createSubscription = async (req, res) => {
     }
 
     // compute per-installment amount in paise
-    const totalAmountPaise = Math.round(Number(course.price || 0) * 100);
+    const finalPrice = getDiscountedPrice(course);
+    const totalAmountPaise = Math.round(Number(finalPrice || 0) * 100);
     const perInstallmentPaise = isRenewal 
         ? totalAmountPaise  // For renewal, price is the monthly cost
         : Math.round(totalAmountPaise / resolvedTotalCount); // For EMI, price is divided
@@ -549,7 +558,7 @@ export const createSubscription = async (req, res) => {
       type: "subscription",
       isRecurring: isRenewal, // CRITICAL: So webhook knows to extend by 30 days
       plan_id: chosenPlanId,
-      amount: Number(course.price),
+      amount: Number(finalPrice),
       currency: "INR",
       razorpay_subscription_id: rzpSubscription.id,
       status: mappedStatus,
@@ -567,7 +576,7 @@ export const createSubscription = async (req, res) => {
             plan_id: chosenPlanId,
             installments: Number(resolvedTotalCount),
             perInstallmentAmount: perInstallmentPaise / 100,
-            totalAmount: Number(course.price),
+            totalAmount: Number(finalPrice),
           },
       metadata: { razorpaySubscription: rzpSubscription },
     });
