@@ -122,8 +122,8 @@ export const getCourseDetails = async (req, res) => {
         const lessons = await Lesson.find({ module: module._id }).sort("order").lean();
         
         const securedLessons = lessons.map(lesson => {
-          // staff (admin/owner) OR subscribed student OR free lesson = SHOW URL
-          if (isStaff || isSubscribed || lesson.isFree === true) {
+          // staff (admin/owner) OR subscribed student = SHOW URL
+          if (isStaff || isSubscribed) {
             return lesson; 
           }
           // Otherwise hide the URL
@@ -145,6 +145,7 @@ export const getCourseDetails = async (req, res) => {
 
     res.json({ 
       ...course, 
+      isSubscribed,
       modules: modulesWithLessons, 
       liveMeetings: securedMeetings 
     });
