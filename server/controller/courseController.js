@@ -292,6 +292,7 @@ export const createCourse = async (req, res) => {
       duration,
       thumbnail: thumbnail,
       isLiveCourse: isLiveCourse === "true",
+      isRecurring: req.body.isRecurring === "true",
       paymentOptions:parsedPaymentOptions,
       durationInDays: Number(durationInDays),
       discount: Number(req.body.discount || 0),
@@ -323,6 +324,9 @@ export const updateCourse = async (req, res) => {
     course.createdBy = createdBy || course.createdBy;
     course.duration = duration || course.duration;
     course.isLiveCourse = isLiveCourse === "true";
+    if (req.body.isRecurring !== undefined) {
+        course.isRecurring = req.body.isRecurring === "true";
+    }
 
     course.durationInDays = Number(durationInDays) || course.durationInDays;
     if (req.body.discount !== undefined) {

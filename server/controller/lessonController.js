@@ -1,5 +1,6 @@
 import Lesson from "../Model/lesson.js";
 import User from "../Model/userSchema.js";
+import Module from "../Model/module.js";
 
 // @desc    List of lessons in a module
 // @route   GET /api/modules/:moduleId/lessons
@@ -8,7 +9,33 @@ export const getModuleLessons = async (req, res) => {
     const { moduleId } = req.params;
 
     const userRole = req.user.role;
+    const userId = req.user.id;
     const isPrivileged = userRole === "admin" || userRole === "owner";
+
+    // Fetch Module to get Course ID
+    const moduleDoc = await Module.findById(moduleId);
+    if (!moduleDoc) {
+      return res.status(404).json({ message: "Module not found" });
+    }
+    const courseId = moduleDoc.course.toString();
+
+    let hasAccess = isPrivileged;
+
+    // Check subscription if not privileged
+    if (!hasAccess) {
+      const student = await User.findById(userId);
+      if (student) {
+        const now = new Date();
+        const isSubscribed = student.subscribedCourses.find((sub) => {
+          return (
+            sub.courseId &&
+            sub.courseId.toString() === courseId &&
+            new Date(sub.expiresAt) > now
+          );
+        });
+        if (isSubscribed) hasAccess = true;
+      }
+    }
 
     const lessons = await Lesson.find({ module: moduleId })
       .sort({ order: 1 })
@@ -23,8 +50,15 @@ export const getModuleLessons = async (req, res) => {
         duration: lesson.duration,
       };
 
-      if (isPrivileged) {
+      // Expose contentUrl if privileged, subscribed, or lesson is free
+      if (hasAccess || lesson.isFree) {
         lessonData.contentUrl = lesson.contentUrl;
+        if (hasAccess) {
+          lessonData.message = "Access Granted";
+        }
+      }
+
+      if (isPrivileged) {
         lessonData.message = "Admin/Owner View: Full Access";
       }
 
