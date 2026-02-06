@@ -7,6 +7,7 @@ import Subscription from "../Model/subscription.js";
 import Module from "../Model/module.js";  
 import Lesson from "../Model/lesson.js"; 
 import Meeting from "../Model/meet.js";
+import SubModule from "../Model/subModule.js";
 // --- 1. PUBLIC & STUDENT APIs ---
 
 // @desc    List all courses (Public)
@@ -114,24 +115,49 @@ export const getCourseDetails = async (req, res) => {
       );
     }
 
-    // 2. Fetch Modules & Lessons
+    // 2. Fetch Modules & Deep Hierarchy
+    // Structure: Module -> SubModule -> Lessons(Categorized)
     const modules = await Module.find({ course: req.params.id }).sort("order").lean();
 
-    const modulesWithLessons = await Promise.all(
+    const modulesWithContent = await Promise.all(
       modules.map(async (module) => {
-        const lessons = await Lesson.find({ module: module._id }).sort("order").lean();
-        
-        const securedLessons = lessons.map(lesson => {
-          // staff (admin/owner) OR subscribed student = SHOW URL
-          if (isStaff || isSubscribed) {
-            return lesson; 
-          }
-          // Otherwise hide the URL
-          const { contentUrl, ...lessonData } = lesson;
-          return { ...lessonData, contentUrl: null };
-        });
+        // A. Fetch SubModules for this Module
+        const subModules = await SubModule.find({ module: module._id }).sort("order").lean();
 
-        return { ...module, lessons: securedLessons };
+        // B. For each SubModule, fetch Lessons
+        const subModulesWithLessons = await Promise.all(
+          subModules.map(async (subMod) => {
+            const lessons = await Lesson.find({ subModule: subMod._id }).sort("order").lean();
+
+            // Secure the lessons
+            const securedLessons = lessons.map(lesson => {
+              if (isStaff || isSubscribed) return lesson;
+              
+              // Hide access if not subscribed
+              const { contentUrl, ...lessonData } = lesson;
+              return { ...lessonData, contentUrl: null };
+            });
+
+            return { ...subMod, lessons: securedLessons };
+          })
+        );
+
+        // C. (Optional) Fetch direct lessons under module (Legacy support)
+        // If you are migrating completely, you might skip this or keep it.
+        // Let's keep it for safety if lessons were not migrated.
+        const directLessons = await Lesson.find({ module: module._id, subModule: { $exists: false } }).sort("order").lean();
+         const securedDirectLessons = directLessons.map(lesson => {
+            if (isStaff || isSubscribed) return lesson;
+            const { contentUrl, ...lessonData } = lesson;
+            return { ...lessonData, contentUrl: null };
+          });
+
+
+        return { 
+          ...module, 
+          subModules: subModulesWithLessons,
+          ...(securedDirectLessons.length > 0 && { lessons: securedDirectLessons }) // Only show if not empty
+        };
       })
     );
 
@@ -146,7 +172,7 @@ export const getCourseDetails = async (req, res) => {
     res.json({ 
       ...course, 
       isSubscribed,
-      modules: modulesWithLessons, 
+      modules: modulesWithContent, 
       liveMeetings: securedMeetings 
     });
   } catch (err) {
@@ -370,6 +396,8 @@ export const deleteCourse = async (req, res) => {
 
 // @desc    Get all courses with full content (Admin Dashboard)
 // @route   GET /api/admin/courses
+// @desc    Get all courses with full content (Admin Dashboard)
+// @route   GET /api/admin/courses
 export const getAllCourses = async (req, res) => {
   try {
     const courses = await Course.find({}).sort({ createdAt: -1 }).lean();
@@ -381,16 +409,26 @@ export const getAllCourses = async (req, res) => {
           .sort("order")
           .lean();
 
-        // 2. Get Lessons for each Module
-        const modulesWithLessons = await Promise.all(
+        // 2. Get SubModules and Lessons
+        const modulesWithContent = await Promise.all(
           modules.map(async (module) => {
-            const lessons = await Lesson.find({ module: module._id })
-              .sort("order")
-              .lean();
+            // SubModules
+            const subModules = await SubModule.find({ module: module._id }).sort("order").lean();
             
+            const subModulesWithLessons = await Promise.all(
+              subModules.map(async (subMod) => {
+                const lessons = await Lesson.find({ subModule: subMod._id }).sort("order").lean();
+                return { ...subMod, lessons };
+              })
+            );
+
+            // Direct Lessons (Legacy/Root)
+            const directLessons = await Lesson.find({ module: module._id, subModule: { $exists: false } }).sort("order").lean();
+
             return {
               ...module,
-              lessons: lessons, 
+              subModules: subModulesWithLessons,
+              ...(directLessons.length > 0 && { lessons: directLessons }) // Only show if not empty
             };
           })
         );
@@ -402,7 +440,7 @@ export const getAllCourses = async (req, res) => {
 
         return {
           ...course,
-          modules: modulesWithLessons,
+          modules: modulesWithContent,
           liveMeetings: liveMeetings, // Attached meetings to course response
         };
       })

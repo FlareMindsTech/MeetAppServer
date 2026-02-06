@@ -15,7 +15,8 @@ import {
 } from "../controller/lessonController.js";
 import { 
   addModule, updateModule, deleteModule, 
-  createLesson, updateLesson, deleteLesson, uploadResource 
+  createLesson, updateLesson, deleteLesson, uploadResource,
+  addSubModule, updateSubModule, deleteSubModule // New imports
 } from "../controller/adminController.js";
 
 // Roles
@@ -38,10 +39,15 @@ router.put("/admin/courses/:id/update", auth, adminOnly, upload.single("thumbnai
 router.delete("/admin/courses/:id/delete", auth, adminOnly, deleteCourse);
 router.get("/admin/courses/:courseId/students", auth, adminOnly, getCoursePurchasedStudents);
 
-// --- ADMIN MODULE MANAGEMENT ---
+// --- ADMIN MODULE MANAGEMENT (Topics) ---
 router.post("/admin/courses/:id/modules", auth, adminOnly, addModule);
 router.put("/admin/modules/:moduleId/update", auth, adminOnly, updateModule);
 router.delete("/admin/modules/:moduleId/delete", auth, adminOnly, deleteModule);
+
+// --- ADMIN SUB-MODULE MANAGEMENT (Sub-Topics) ---
+router.post("/admin/modules/:moduleId/submodules", auth, adminOnly, addSubModule);
+router.put("/admin/submodules/:subModuleId/update", auth, adminOnly, updateSubModule);
+router.delete("/admin/submodules/:subModuleId/delete", auth, adminOnly, deleteSubModule);
 
 // --- ADMIN LESSON MANAGEMENT ---
 router.post("/admin/lessons/create", auth, adminOnly, uploadContent.single("contentFile"), createLesson);

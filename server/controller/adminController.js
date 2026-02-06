@@ -5,8 +5,10 @@ import User from "../Model/userSchema.js";
 import transporter from "./transporter.js";
 import Subscription from "../Model/subscription.js";
 import Module from "../Model/module.js";
+import SubModule from "../Model/subModule.js";
 import Lesson from "../Model/lesson.js";
 import Progress from "../Model/progress.js";
+import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
 // import Meeting from "../Model/meet.js";
 // --- 1. PUBLIC & STUDENT APIs ---
 
@@ -147,10 +149,87 @@ export const deleteModule = async (req, res) => {
     const module = await Module.findById(moduleId);
     if (!module) return res.status(404).json({ message: "Module not found" });
 
+    // 1. Find all submodules
+    const subModules = await SubModule.find({ module: moduleId });
+    const subModuleIds = subModules.map(sm => sm._id);
+
+    // 2. Delete lessons in those submodules
+    if (subModuleIds.length > 0) {
+      await Lesson.deleteMany({ subModule: { $in: subModuleIds } });
+    }
+
+    // 3. Delete lessons directly in this module (legacy/mixed)
     await Lesson.deleteMany({ module: moduleId });
+
+    // 4. Delete the submodules
+    await SubModule.deleteMany({ module: moduleId });
+    
+    // 5. Delete the module
     await module.deleteOne();
 
-    res.json({ message: "Module and all its lessons deleted" });
+    res.json({ message: "Module, its SubModules, and all related Lessons deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+// --- 3.5. SUB-MODULE MANAGEMENT (Topics/SubTopics) ---
+
+// @desc    Add a SubModule to a Module
+export const addSubModule = async (req, res) => {
+  try {
+    const { moduleId } = req.params;
+    const { title, order } = req.body;
+
+    if (!title) return res.status(400).json({ message: "SubModule title is required" });
+
+    const module = await Module.findById(moduleId);
+    if (!module) return res.status(404).json({ message: "Parent Module not found" });
+
+    const newSubModule = await SubModule.create({
+      module: moduleId,
+      title,
+      order: order || 0
+    });
+
+    res.status(201).json(newSubModule);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc    Update a SubModule
+export const updateSubModule = async (req, res) => {
+  try {
+    const { subModuleId } = req.params;
+    const { title, order } = req.body;
+
+    const subMod = await SubModule.findById(subModuleId);
+    if (!subMod) return res.status(404).json({ message: "SubModule not found" });
+
+    if (title) subMod.title = title;
+    if (order !== undefined) subMod.order = order;
+
+    await subMod.save();
+    res.json(subMod);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc    Delete a SubModule
+export const deleteSubModule = async (req, res) => {
+  try {
+    const { subModuleId } = req.params;
+    const subMod = await SubModule.findById(subModuleId);
+    if (!subMod) return res.status(404).json({ message: "SubModule not found" });
+
+    // Delete lessons inside this subModule
+    await Lesson.deleteMany({ subModule: subModuleId });
+
+    await subMod.deleteOne();
+    res.json({ message: "SubModule and its lessons deleted" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -161,18 +240,20 @@ export const deleteModule = async (req, res) => {
 // @desc    Create a new Lesson (Video/PDF)
 export const createLesson = async (req, res) => {
   try {
-    const { moduleId, title, isFree, duration, order } = req.body;
+    const { moduleId, subModuleId, title, isFree, duration, order, category } = req.body;
     const file = req.file;
 
-    if (!moduleId || !title || !file) {
+    // We need either a moduleId OR a subModuleId
+    if ((!moduleId && !subModuleId) || !title || !file) {
       return res
         .status(400)
-        .json({ message: "Module ID, Title, and File are required" });
+        .json({ message: "Module ID (or SubModule ID), Title, and File are required" });
     }
 
     let type = "text";
     const mime = file.mimetype.toLowerCase();
     const filename = file.originalname.toLowerCase();
+    let autoDuration = 0;
 
     if (
       mime.startsWith("video/") ||
@@ -181,6 +262,21 @@ export const createLesson = async (req, res) => {
       filename.endsWith(".mov")
     ) {
       type = "video";
+      // Auto-fetch duration from Cloudinary if not provided
+      if (!duration || duration == 0) {
+        try {
+          // req.file.filename is usually the public_id in multer-storage-cloudinary
+          const videoDetails = await cloudinary.api.resource(file.filename, { 
+            resource_type: "video",
+            image_metadata: true 
+          });
+          if (videoDetails && videoDetails.duration) {
+            autoDuration = Math.floor(videoDetails.duration); // Duration in seconds (floored)
+          }
+        } catch (cloudErr) {
+          console.error("Failed to fetch video duration from Cloudinary:", cloudErr.message);
+        }
+      }
     } else if (mime.includes("pdf") || filename.endsWith(".pdf")) {
       type = "pdf";
     }
@@ -188,12 +284,14 @@ export const createLesson = async (req, res) => {
     const contentUrl = file.path;
 
     const newLesson = await Lesson.create({
-      module: moduleId,
+      module: moduleId || undefined,       // legacy or fail-safe
+      subModule: subModuleId || undefined, // new hierarchy
       title,
       type,
+      category: category || "Other",
       contentUrl: contentUrl,
       isFree: isFree === "true" || isFree === true,
-      duration: Number(duration) || 0,
+      duration: Number(duration) || autoDuration || 0,
       order: Number(order) || 0,
     });
 
@@ -208,12 +306,15 @@ export const createLesson = async (req, res) => {
 export const updateLesson = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, isFree, order } = req.body;
+    const { title, isFree, order, category, subModuleId } = req.body;
 
     const lesson = await Lesson.findById(id);
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
 
     if (title) lesson.title = title;
+    if (category) lesson.category = category;
+    if (subModuleId) lesson.subModule = subModuleId;
+    
     if (isFree !== undefined)
       lesson.isFree = isFree === "true" || isFree === true;
     if (order !== undefined) lesson.order = order;
@@ -229,6 +330,18 @@ export const updateLesson = async (req, res) => {
         filename.endsWith(".mkv")
       ) {
         type = "video";
+        // Auto-fetch duration if updating the video file
+        try {
+            const videoDetails = await cloudinary.api.resource(req.file.filename, { 
+            resource_type: "video",
+            image_metadata: true 
+            });
+            if (videoDetails && videoDetails.duration) {
+            lesson.duration = videoDetails.duration;
+            }
+        } catch (cloudErr) {
+            console.error("Failed to fetch video duration on update:", cloudErr.message);
+        }
       } else if (mime.includes("pdf") || filename.endsWith(".pdf")) {
         type = "pdf";
       }
