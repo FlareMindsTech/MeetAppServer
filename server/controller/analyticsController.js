@@ -64,6 +64,24 @@ export const getAdminCourseReports = async (req, res) => {
           totalStudents: { $sum: 1 },
         },
       },
+      {
+        $lookup: {
+          from: "courses",
+          localField: "_id",
+          foreignField: "_id",
+          as: "courseDetails",
+        },
+      },
+      { $unwind: "$courseDetails" },
+      {
+        $project: {
+          courseTitle: "$courseDetails.title",
+          coursePrice: "$courseDetails.price",
+          courseThumbnail: "$courseDetails.thumbnail",
+          avgCompletion: { $round: ["$avgCompletion", 1] },
+          totalStudents: 1,
+        },
+      },
     ]);
     res.json(reports);
   } catch (err) {
