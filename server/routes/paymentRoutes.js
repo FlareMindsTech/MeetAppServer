@@ -6,7 +6,7 @@ import checkRoles from "../middleware/rolesMiddleware.js";
 // Controllers
 import { 
   createOrder, verifyPayment, createSubscription, razorpayWebhook,
-  getAllSubscriptions, cancelSubscription, getAllPayments, initiatePayment, getSubscriptionStatus, getStudentPaymentHistory, getPaymentHistoryByStudent
+  getAllSubscriptions, cancelSubscription, getAllPayments, initiatePayment, getSubscriptionStatus, getStudentPaymentHistory, getPaymentHistoryByStudent, getPaymentAnalytics
 } from "../controller/paymentController.js";
 
 // Roles
@@ -22,6 +22,7 @@ router.post("/payment/webhook", razorpayWebhook);
 router.get("/payments/history", auth, studentOnly, getStudentPaymentHistory);
 
 // --- ADMIN PAYMENTS ---
+router.get("/admin/payment-analytics", auth, adminOnly, getPaymentAnalytics);
 router.get("/admin/payments/student/:studentId", auth, adminOnly, getPaymentHistoryByStudent);
 router.get("/admin/subscriptions", auth, adminOnly, getAllSubscriptions);
 router.post("/admin/subscriptions/:id/cancel", auth, adminOnly, cancelSubscription);

@@ -995,8 +995,38 @@ export const cancelSubscription = async (req, res) => {
 
 export const getAllPayments = async (req, res) => {
   try {
-    const payments = await Payment.find({}).populate("student", "FirstName LastName email").populate("course", "title").sort({ createdAt: -1 });
-    res.json(payments);
+    const payments = await Payment.find({})
+      .populate("student", "FirstName LastName email")
+      .populate("course", "title")
+      .sort({ createdAt: -1 });
+
+    // --- Analytics Logic ---
+    // 1. Total Revenue (Sum of 'amount' in Payment collection)
+    const revenueAgg = await Payment.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$amount" },
+        },
+      },
+    ]);
+    const totalRevenue = revenueAgg.length > 0 ? revenueAgg[0].totalRevenue : 0;
+
+    // 2. Total Payments (Count of documents in Payment collection)
+    const totalPayments = await Payment.countDocuments();
+
+    // 3. Active Subscriptions
+    const activeSubscriptions = await Subscription.countDocuments({ status: "active" });
+
+    // --- Combined Response ---
+    res.json({
+      payments,
+      analytics: {
+        totalRevenue,
+        totalPayments,
+        activeSubscriptions,
+      },
+    });
   } catch (err) {
     console.error("getAllPayments err:", err);
     res.status(500).json({ message: err.message || "Internal Server Error" });
@@ -1197,6 +1227,36 @@ export const getStudentPaymentHistory = async (req, res) => {
     res.status(200).json(history);
   } catch (err) {
     console.error("getStudentPaymentHistory err:", err);
+    res.status(500).json({ message: err.message || "Internal Server Error" });
+  }
+};
+
+export const getPaymentAnalytics = async (req, res) => {
+  try {
+    // 1. Total Revenue (Sum of 'amount' in Payment collection)
+    const revenueAgg = await Payment.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$amount" },
+        },
+      },
+    ]);
+    const totalRevenue = revenueAgg.length > 0 ? revenueAgg[0].totalRevenue : 0;
+
+    // 2. Total Payments (Count of documents in Payment collection)
+    const totalPayments = await Payment.countDocuments();
+
+    // 3. Active Subscriptions
+    const activeSubscriptions = await Subscription.countDocuments({ status: "active" });
+
+    res.json({
+      totalRevenue,
+      totalPayments,
+      activeSubscriptions,
+    });
+  } catch (err) {
+    console.error("getPaymentAnalytics err:", err);
     res.status(500).json({ message: err.message || "Internal Server Error" });
   }
 };

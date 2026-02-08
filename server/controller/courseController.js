@@ -462,7 +462,14 @@ export const getCourseModules = async (req, res) => {
       return res.status(404).json({ message: "No modules found for this course" });
     }
 
-    res.json(modules);
+    const modulesWithSubModules = await Promise.all(
+      modules.map(async (module) => {
+        const subModules = await SubModule.find({ module: module._id }).sort("order").lean();
+        return { ...module, subModules };
+      })
+    );
+
+    res.json(modulesWithSubModules);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: err.message });

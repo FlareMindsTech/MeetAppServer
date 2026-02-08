@@ -2,18 +2,20 @@ import Lesson from "../Model/lesson.js";
 import User from "../Model/userSchema.js";
 import Module from "../Model/module.js";
 
-// @desc    List of lessons in a module
+import SubModule from "../Model/subModule.js";
+
+// @desc    List of lessons in a module (Includes SubModules and their lessons)
 // @route   GET /api/modules/:moduleId/lessons
 export const getModuleLessons = async (req, res) => {
   try {
     const { moduleId } = req.params;
 
-    const userRole = req.user.role;
+    const userRole = (req.user.role || "").toLowerCase();
     const userId = req.user.id;
     const isPrivileged = userRole === "admin" || userRole === "owner";
 
     // Fetch Module to get Course ID
-    const moduleDoc = await Module.findById(moduleId);
+    const moduleDoc = await Module.findById(moduleId).lean();
     if (!moduleDoc) {
       return res.status(404).json({ message: "Module not found" });
     }
@@ -37,17 +39,16 @@ export const getModuleLessons = async (req, res) => {
       }
     }
 
-    const lessons = await Lesson.find({ module: moduleId })
-      .sort({ order: 1 })
-      .lean();
-
-    const sanitizedLessons = lessons.map((lesson) => {
+    // Helper to sanitize lesson based on access
+    const sanitizeLesson = (lesson) => {
       const lessonData = {
         _id: lesson._id,
         title: lesson.title,
         type: lesson.type,
         isFree: lesson.isFree,
         duration: lesson.duration,
+        order: lesson.order,
+        category: lesson.category,
       };
 
       // Expose contentUrl if privileged, subscribed, or lesson is free
@@ -56,6 +57,9 @@ export const getModuleLessons = async (req, res) => {
         if (hasAccess) {
           lessonData.message = "Access Granted";
         }
+      } else {
+        lessonData.contentUrl = null;
+        lessonData.message = "Locked";
       }
 
       if (isPrivileged) {
@@ -63,9 +67,34 @@ export const getModuleLessons = async (req, res) => {
       }
 
       return lessonData;
+    };
+
+    // 1. Fetch SubModules and their Lessons
+    const subModules = await SubModule.find({ module: moduleId }).sort({ order: 1 }).lean();
+    
+    const subModulesWithLessons = await Promise.all(
+        subModules.map(async (subMod) => {
+            const lessons = await Lesson.find({ subModule: subMod._id }).sort({ order: 1 }).lean();
+            return {
+                ...subMod,
+                lessons: lessons.map(sanitizeLesson)
+            };
+        })
+    );
+
+    // 2. Fetch Direct Lessons (Legacy/Mixed - lessons directly under module without submodule)
+    const directLessons = await Lesson.find({ 
+        module: moduleId,
+        $or: [{ subModule: { $exists: false } }, { subModule: null }]
+    }).sort({ order: 1 }).lean();
+
+
+    res.json({
+        module: moduleDoc,
+        subModules: subModulesWithLessons,
+        lessons: directLessons.map(sanitizeLesson)
     });
 
-    res.json(sanitizedLessons);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: err.message });
@@ -79,19 +108,44 @@ export const getLessonDetails = async (req, res) => {
   try {
     const { lessonId } = req.params;
     const studentId = req.user.id;
-    const userRole = req.user.role;
+    const userRole = (req.user.role || "").toLowerCase();
 
     const canBypassSubscription =
       userRole === "admin" || userRole === "owner";
 
-    const lesson = await Lesson.findById(lessonId).populate("module");
+    // Populate both module and subModule (and their nested course/module references)
+    const lesson = await Lesson.findById(lessonId)
+      .populate({
+        path: "module",
+        select: "course",
+      })
+      .populate({
+        path: "subModule",
+        populate: {
+          path: "module",
+          select: "course",
+        },
+      });
 
     if (!lesson) {
       return res.status(404).json({ message: "Lesson not found" });
     }
 
-    if (!lesson.module || !lesson.module.course) {
-      console.error("Data Error: Lesson missing module or course link");
+    // Determine Course ID
+    let courseId = null;
+
+    if (lesson.module && lesson.module.course) {
+      courseId = lesson.module.course.toString();
+    } else if (
+      lesson.subModule &&
+      lesson.subModule.module &&
+      lesson.subModule.module.course
+    ) {
+      courseId = lesson.subModule.module.course.toString();
+    }
+
+    if (!courseId) {
+      console.error("Data Error: Lesson missing module/course link", lesson);
       return res.status(500).json({ message: "Lesson data is corrupted." });
     }
 
@@ -101,12 +155,11 @@ export const getLessonDetails = async (req, res) => {
 
     const student = await User.findById(studentId);
     const now = new Date();
-    const courseIdToCheck = lesson.module.course.toString();
-
+    
     const isSubscribed = student.subscribedCourses.find((sub) => {
       if (!sub.courseId) return false;
       return (
-        sub.courseId.toString() === courseIdToCheck &&
+        sub.courseId.toString() === courseId &&
         sub.expiresAt > now
       );
     });
