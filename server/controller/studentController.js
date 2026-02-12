@@ -187,3 +187,24 @@ export const getSubscribedCourseVideo = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// @desc    Delete My Account (Self-Deletion)
+// @route   DELETE /api/user/delete-account
+export const deleteMyAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+
+    await user.deleteOne();
+
+    res.json({ message: "Your account has been permanently deleted." });
+  } catch (err) {
+    console.error("Error deleting account:", err);
+    res.status(500).json({ message: "Server error deleting account" });
+  }
+};
