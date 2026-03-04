@@ -958,7 +958,17 @@ export const razorpayWebhook = async (req, res) => {
 export const getAllSubscriptions = async (req, res) => {
   try {
     const subscriptions = await Subscription.find({}).populate("student", "FirstName LastName email").populate("course", "title price").sort({ createdAt: -1 });
-    res.json(subscriptions);
+    
+    const formattedSubscriptions = subscriptions.map(sub => {
+      const obj = sub.toObject();
+      // Inject aliases commonly expected by external frontends (e.g. Flutter)
+      obj.subscriptionId = obj.razorpay_subscription_id;
+      obj.subscription_id = obj.razorpay_subscription_id;
+      obj.subId = obj.razorpay_subscription_id;
+      return obj;
+    });
+
+    res.json(formattedSubscriptions);
   } catch (err) {
     console.error("getAllSubscriptions err:", err);
     res.status(500).json({ message: err.message || "Internal Server Error" });
