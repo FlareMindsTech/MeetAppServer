@@ -961,7 +961,7 @@ export const getAllSubscriptions = async (req, res) => {
     
     const formattedSubscriptions = subscriptions.map(sub => {
       const obj = sub.toObject();
-      // Inject aliases commonly expected by external frontends (e.g. Flutter)
+    
       obj.subscriptionId = obj.razorpay_subscription_id;
       obj.subscription_id = obj.razorpay_subscription_id;
       obj.subId = obj.razorpay_subscription_id;
