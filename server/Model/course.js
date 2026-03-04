@@ -13,6 +13,14 @@ const emiPlanSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const renewalPlanSchema = new mongoose.Schema(
+  {
+    durationInDays: { type: Number },
+    price: { type: Number },
+  },
+  { _id: false }
+);
+
 const courseSchema = new mongoose.Schema(
   {
     title: String,

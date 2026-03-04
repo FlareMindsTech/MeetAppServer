@@ -8,6 +8,14 @@ import Module from "../Model/module.js";
 import Lesson from "../Model/lesson.js"; 
 import Meeting from "../Model/meet.js";
 import SubModule from "../Model/subModule.js";
+
+/* Helper: Calculate discounted price */
+const getDiscountedPrice = (course) => {
+  if (!course.discount || course.discount <= 0) return course.price;
+  const discountAmount = (course.price * course.discount) / 100;
+  return Math.round(course.price - discountAmount);
+};
+
 // --- 1. PUBLIC & STUDENT APIs ---
 
 // @desc    List all courses (Public)
@@ -22,9 +30,15 @@ export const getPublicCourses = async (req, res) => {
 
     const courses = await Course.find(filter)
       .select("title description thumbnail price discount isLiveCourse duration category")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.json(courses);
+    const coursesWithDiscount = courses.map(c => ({
+      ...c,
+      discountedPrice: getDiscountedPrice(c),
+    }));
+
+    res.json(coursesWithDiscount);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -171,6 +185,7 @@ export const getCourseDetails = async (req, res) => {
 
     res.json({ 
       ...course, 
+      discountedPrice: getDiscountedPrice(course),
       isSubscribed,
       modules: modulesWithContent, 
       liveMeetings: securedMeetings 
@@ -440,8 +455,9 @@ export const getAllCourses = async (req, res) => {
 
         return {
           ...course,
+          discountedPrice: getDiscountedPrice(course),
           modules: modulesWithContent,
-          liveMeetings: liveMeetings, // Attached meetings to course response
+          liveMeetings: liveMeetings,
         };
       })
     );
