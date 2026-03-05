@@ -1,6 +1,6 @@
 import express from "express";
 const router = express.Router();
-import auth from "../middleware/authMiddleware.js";
+import auth, { optionalAuth } from "../middleware/authMiddleware.js";
 import checkRoles from "../middleware/rolesMiddleware.js";
 import { upload } from "../config/multer.js";
 import { uploadContent } from "../config/multerContent.js";
@@ -11,7 +11,7 @@ import {
   getAllCourses, createCourse, updateCourse, deleteCourse, getCoursePurchasedStudents, getCourseModules 
 } from "../controller/courseController.js";
 import { 
-  getModuleLessons, getLessonDetails, downloadLessonResource 
+  getSubModuleLessons, getLessonDetails, downloadLessonResource 
 } from "../controller/lessonController.js";
 import { 
   addModule, updateModule, deleteModule, 
@@ -23,12 +23,12 @@ import {
 const adminOnly = checkRoles(["owner", "admin"]);
 
 // --- STUDENT / PUBLIC ---
-router.get("/courses", getPublicCourses);
+router.get("/courses", optionalAuth, getPublicCourses);
 router.get("/courses/:id", auth, getCourseDetails);
 router.get("/courses/:id/modules", getCourseModules);
 router.post("/courses/:id/enroll", auth, enrollStudent);
 
-router.get("/modules/:moduleId/lessons", auth, getModuleLessons);
+router.get("/submodules/:subModuleId/lessons", auth, getSubModuleLessons);
 router.get("/lessons/:lessonId", auth, getLessonDetails);
 router.get("/lessons/:lessonId/download", auth, downloadLessonResource);
 

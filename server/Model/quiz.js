@@ -2,9 +2,9 @@ import mongoose from "mongoose";
 
 const quizSchema = new mongoose.Schema(
   {
-    module: {
+    subModule: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Module",
+      ref: "SubModule",
       required: true,
     },
     title: { type: String, required: true },

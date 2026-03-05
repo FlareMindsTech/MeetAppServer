@@ -158,10 +158,9 @@ export const deleteModule = async (req, res) => {
       await Lesson.deleteMany({ subModule: { $in: subModuleIds } });
     }
 
-    // 3. Delete lessons directly in this module (legacy/mixed)
-    await Lesson.deleteMany({ module: moduleId });
+    // 3. (Legacy direct mapping removal - lessons strictly sit in subModules now)
 
-    // 4. Delete the submodules
+    // 4. Delete the subModules
     await SubModule.deleteMany({ module: moduleId });
     
     // 5. Delete the module
@@ -240,14 +239,13 @@ export const deleteSubModule = async (req, res) => {
 // @desc    Create a new Lesson (Video/PDF)
 export const createLesson = async (req, res) => {
   try {
-    const { moduleId, subModuleId, title, isFree, duration, order, category } = req.body;
+    const { subModuleId, title, isFree, duration, order, category } = req.body;
     const file = req.file;
 
-    // We need either a moduleId OR a subModuleId
-    if ((!moduleId && !subModuleId) || !title || !file) {
+    if (!subModuleId || !title || !file) {
       return res
         .status(400)
-        .json({ message: "Module ID (or SubModule ID), Title, and File are required" });
+        .json({ message: "SubModule ID, Title, and File are required" });
     }
 
     let type = "text";
@@ -284,8 +282,7 @@ export const createLesson = async (req, res) => {
     const contentUrl = file.path;
 
     const newLesson = await Lesson.create({
-      module: moduleId || undefined,       // legacy or fail-safe
-      subModule: subModuleId || undefined, // new hierarchy
+      subModule: subModuleId, // strict hierarchy
       title,
       type,
       category: category || "Other",

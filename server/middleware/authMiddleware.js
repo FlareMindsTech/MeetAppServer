@@ -44,6 +44,26 @@ export default async function auth(req, res, next) {
   }
 }
 
+// Middleware: Optional auth (attaches user if token exists, doesn't block if missing)
+export const optionalAuth = async (req, res, next) => {
+  const authHeader = req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
+    const user = await User.findById(decoded.id).select("sessionId role email");
+    if (user && (!decoded.sessionId || !user.sessionId || decoded.sessionId === user.sessionId)) {
+      req.user = decoded;
+    }
+  } catch (err) {
+    // Ignore error, proceed as guest
+  }
+  next();
+};
+
 // Middleware: allows only students
 export const studentOnly = (req, res, next) => {
   if (!req.user || req.user.role.toLowerCase() !== "student") {

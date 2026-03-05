@@ -8,6 +8,7 @@ import Module from "../Model/module.js";
 import Lesson from "../Model/lesson.js"; 
 import Meeting from "../Model/meet.js";
 import SubModule from "../Model/subModule.js";
+import Quiz from "../Model/quiz.js";
 
 /* Helper: Calculate discounted price */
 const getDiscountedPrice = (course) => {
@@ -18,27 +19,97 @@ const getDiscountedPrice = (course) => {
 
 // --- 1. PUBLIC & STUDENT APIs ---
 
-// @desc    List all courses (Public)
+// @desc    List all courses with nested data (Public)
 // @route   GET /api/courses
 export const getPublicCourses = async (req, res) => {
   try {
     const { type } = req.query;
     let filter = {};
 
+    const studentId = req.user?.id;
+    const userRole = (req.user?.role || "").toLowerCase().trim();
+    const isStaff = userRole === "admin" || userRole === "owner";
+
+    // 1. Fetch user to check subscriptions if logged in
+    let student = null;
+    if (studentId && !isStaff) {
+      student = await User.findById(studentId).lean();
+    }
+
     if (type === "recorded") filter.isLiveCourse = false;
     if (type === "live") filter.isLiveCourse = true;
 
     const courses = await Course.find(filter)
-      .select("title description thumbnail price discount isLiveCourse duration category")
       .sort({ createdAt: -1 })
       .lean();
 
-    const coursesWithDiscount = courses.map(c => ({
-      ...c,
-      discountedPrice: getDiscountedPrice(c),
-    }));
+    const coursesWithContent = await Promise.all(
+      courses.map(async (course) => {
+        // Evaluate Subscription for this specific Course
+        let isSubscribed = false;
+        if (studentId && !isStaff && student) {
+          const now = new Date();
+          isSubscribed = student.subscribedCourses?.some(
+            (sub) => sub.courseId.toString() === course._id.toString() && sub.expiresAt > now
+          );
+        }
 
-    res.json(coursesWithDiscount);
+        // 1. Fetch Modules
+        const modules = await Module.find({ course: course._id }).sort("order").lean();
+
+        const modulesWithContent = await Promise.all(
+          modules.map(async (module) => {
+            // A. Fetch SubModules
+            const subModules = await SubModule.find({ module: module._id }).sort("order").lean();
+
+            const subModulesWithLessons = await Promise.all(
+              subModules.map(async (subMod) => {
+                const lessons = await Lesson.find({ subModule: subMod._id }).sort("order").lean();
+
+                // Secure the lessons based on Subscription/Staff Status
+                const securedLessons = lessons.map(lesson => {
+                  if (isStaff || isSubscribed) return lesson;
+                  const { contentUrl, ...lessonData } = lesson;
+                  return { ...lessonData, contentUrl: null };
+                });
+
+                // Secure the Quiz
+                const quiz = await Quiz.findOne({ subModule: subMod._id }).lean();
+                let securedQuiz = null; 
+                if (quiz) {
+                    if (isStaff || isSubscribed) {
+                        securedQuiz = quiz;
+                    }
+                }
+
+                return { ...subMod, lessons: securedLessons, quiz: securedQuiz };
+              })
+            );
+
+            return { 
+              ...module, 
+              subModules: subModulesWithLessons
+            };
+          })
+        );
+
+        // 2. Fetch Live Meetings securely
+        const meetings = await Meeting.find({ courseId: course._id }).sort({ date: 1, startTime: 1 }).lean();
+        const securedMeetings = meetings.map(m => {
+            if (isStaff || isSubscribed) return m;
+            return { ...m, meetingUrl: null };
+        });
+
+        return {
+          ...course,
+          discountedPrice: getDiscountedPrice(course),
+          modules: modulesWithContent,
+          liveMeetings: securedMeetings
+        };
+      })
+    );
+
+    res.json(coursesWithContent);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -152,25 +223,29 @@ export const getCourseDetails = async (req, res) => {
               return { ...lessonData, contentUrl: null };
             });
 
-            return { ...subMod, lessons: securedLessons };
+            // Fetch Quiz for SubModule
+            const quiz = await Quiz.findOne({ subModule: subMod._id }).lean();
+            
+            // Secure the Quiz
+            // Hide the actual quiz document logic from unsubscribed users
+            // You can also just delete the correctOption field instead if you want them to see title
+            let securedQuiz = null; 
+            if (quiz) {
+                if (isStaff || isSubscribed) {
+                    securedQuiz = quiz;
+                }
+            }
+
+            return { ...subMod, lessons: securedLessons, quiz: securedQuiz };
           })
         );
 
-        // C. (Optional) Fetch direct lessons under module (Legacy support)
-        // If you are migrating completely, you might skip this or keep it.
-        // Let's keep it for safety if lessons were not migrated.
-        const directLessons = await Lesson.find({ module: module._id, subModule: { $exists: false } }).sort("order").lean();
-         const securedDirectLessons = directLessons.map(lesson => {
-            if (isStaff || isSubscribed) return lesson;
-            const { contentUrl, ...lessonData } = lesson;
-            return { ...lessonData, contentUrl: null };
-          });
-
+        // C. (Legacy Support - removed for strict hierarchy)
+        // No direct lessons under module
 
         return { 
           ...module, 
-          subModules: subModulesWithLessons,
-          ...(securedDirectLessons.length > 0 && { lessons: securedDirectLessons }) // Only show if not empty
+          subModules: subModulesWithLessons
         };
       })
     );
@@ -433,17 +508,17 @@ export const getAllCourses = async (req, res) => {
             const subModulesWithLessons = await Promise.all(
               subModules.map(async (subMod) => {
                 const lessons = await Lesson.find({ subModule: subMod._id }).sort("order").lean();
-                return { ...subMod, lessons };
+                const quiz = await Quiz.findOne({ subModule: subMod._id }).lean();
+
+                return { ...subMod, lessons, quiz };
               })
             );
 
-            // Direct Lessons (Legacy/Root)
-            const directLessons = await Lesson.find({ module: module._id, subModule: { $exists: false } }).sort("order").lean();
-
+            // Direct Lessons (Legacy/Root) - Strict Hierarchy Enforced
+            
             return {
               ...module,
-              subModules: subModulesWithLessons,
-              ...(directLessons.length > 0 && { lessons: directLessons }) // Only show if not empty
+              subModules: subModulesWithLessons
             };
           })
         );

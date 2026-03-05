@@ -5,7 +5,7 @@ import checkRoles from "../middleware/rolesMiddleware.js";
 
 // Controllers
 import { 
-  getModuleQuiz, submitQuiz, getQuizResult, 
+  getSubModuleQuiz, submitQuiz, getQuizResult, 
   createQuiz, getAllQuizzes, addQuestionsToQuiz, updateQuiz, deleteQuiz
 } from "../controller/quizController.js";
 
@@ -13,7 +13,7 @@ import {
 const adminOnly = checkRoles(["owner", "admin"]);
 
 // --- STUDENT QUIZ ---
-router.get("/module/:moduleId/quiz", auth, getModuleQuiz);
+router.get("/submodule/:subModuleId/quiz", auth, getSubModuleQuiz);
 router.post("/quiz/:quizId/submit", auth, submitQuiz);
 router.get("/quiz/:quizId/result", auth, getQuizResult);
 

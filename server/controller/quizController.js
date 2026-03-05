@@ -1,29 +1,30 @@
 import Quiz from "../Model/quiz.js";
 import Progress from "../Model/progress.js";
 import Module from "../Model/module.js";
+import SubModule from "../Model/subModule.js";
 
 // @desc    Create a new Quiz (Admin)
 // @route   POST /api/admin/quiz/create
 //admin controller
 export const createQuiz = async (req, res) => {
   try {
-    const { moduleId, title, questions } = req.body;
+    const { subModuleId, title, questions } = req.body;
 
-    if (!moduleId || !title || !questions || questions.length === 0) {
+    if (!subModuleId || !title || !questions || questions.length === 0) {
       return res
         .status(400)
-        .json({ message: "Module ID, title, and questions are required" });
+        .json({ message: "SubModule ID, title, and questions are required" });
     }
 
-    const existingQuiz = await Quiz.findOne({ module: moduleId });
+    const existingQuiz = await Quiz.findOne({ subModule: subModuleId });
     if (existingQuiz) {
       return res
         .status(400)
-        .json({ message: "A quiz already exists for this module" });
+        .json({ message: "A quiz already exists for this sub module" });
     }
 
     const quiz = await Quiz.create({
-      module: moduleId,
+      subModule: subModuleId,
       title,
       questions,
     });
@@ -38,7 +39,7 @@ export const createQuiz = async (req, res) => {
 export const getAllQuizzes = async (req, res) => {
   try {
     const quizzes = await Quiz.find({})
-      .populate("module", "title")
+      .populate("subModule", "title")
       .sort({ createdAt: -1 });
 
     res.json(quizzes);
@@ -75,13 +76,13 @@ export const addQuestionsToQuiz = async (req, res) => {
 export const updateQuiz = async (req, res) => {
   try {
     const { quizId } = req.params;
-    const { title, moduleId } = req.body;
+    const { title, subModuleId } = req.body;
 
     const quiz = await Quiz.findById(quizId);
     if (!quiz) return res.status(404).json({ message: "Quiz not found" });
 
     if (title) quiz.title = title;
-    if (moduleId) quiz.module = moduleId;
+    if (subModuleId) quiz.subModule = subModuleId;
 
     await quiz.save();
     res.json({ message: "Quiz updated successfully", quiz });
@@ -107,14 +108,14 @@ export const deleteQuiz = async (req, res) => {
 
 //student controllers
 
-export const getModuleQuiz = async (req, res) => {
+export const getSubModuleQuiz = async (req, res) => {
   try {
-    const { moduleId } = req.params;
+    const { subModuleId } = req.params;
 
-    const quiz = await Quiz.findOne({ module: moduleId });
+    const quiz = await Quiz.findOne({ subModule: subModuleId });
 
     if (!quiz) {
-      return res.status(404).json({ message: "No quiz found for this module" });
+      return res.status(404).json({ message: "No quiz found for this sub module" });
     }
 
     // SECURITY: We must hide the 'correctOption' before sending to frontend
@@ -130,7 +131,7 @@ export const getModuleQuiz = async (req, res) => {
     res.json({
       _id: quiz._id,
       title: quiz.title,
-      module: quiz.module,
+      subModule: quiz.subModule,
       questions: sanitizedQuestions,
     });
   } catch (err) {
@@ -170,11 +171,13 @@ export const submitQuiz = async (req, res) => {
       }
     });
 
-    // 2. Find the Course ID (Quiz -> Module -> Course)
-    const module = await Module.findById(quiz.module);
-    if (!module) return res.status(404).json({ message: "Module not found" });
+    // 2. Find the Course ID (Quiz -> SubModule -> Module -> Course)
+    const subModule = await SubModule.findById(quiz.subModule).populate("module");
+    if (!subModule || !subModule.module) {
+      return res.status(404).json({ message: "Associated sub-module or module not found" });
+    }
 
-    const courseId = module.course;
+    const courseId = subModule.module.course;
 
     // 3. Update Student Progress
     let progress = await Progress.findOne({

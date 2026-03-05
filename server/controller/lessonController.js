@@ -4,22 +4,22 @@ import Module from "../Model/module.js";
 
 import SubModule from "../Model/subModule.js";
 
-// @desc    List of lessons in a module (Includes SubModules and their lessons)
-// @route   GET /api/modules/:moduleId/lessons
-export const getModuleLessons = async (req, res) => {
+// @desc    List of lessons in a SubModule
+// @route   GET /api/submodules/:subModuleId/lessons
+export const getSubModuleLessons = async (req, res) => {
   try {
-    const { moduleId } = req.params;
+    const { subModuleId } = req.params;
 
     const userRole = (req.user.role || "").toLowerCase();
     const userId = req.user.id;
     const isPrivileged = userRole === "admin" || userRole === "owner";
 
-    // Fetch Module to get Course ID
-    const moduleDoc = await Module.findById(moduleId).lean();
-    if (!moduleDoc) {
-      return res.status(404).json({ message: "Module not found" });
+    // Fetch SubModule to get Module -> Course ID
+    const subModuleDoc = await SubModule.findById(subModuleId).populate("module").lean();
+    if (!subModuleDoc || !subModuleDoc.module) {
+      return res.status(404).json({ message: "SubModule or Parent Module not found" });
     }
-    const courseId = moduleDoc.course.toString();
+    const courseId = subModuleDoc.module.course.toString();
 
     let hasAccess = isPrivileged;
 
@@ -69,30 +69,12 @@ export const getModuleLessons = async (req, res) => {
       return lessonData;
     };
 
-    // 1. Fetch SubModules and their Lessons
-    const subModules = await SubModule.find({ module: moduleId }).sort({ order: 1 }).lean();
-    
-    const subModulesWithLessons = await Promise.all(
-        subModules.map(async (subMod) => {
-            const lessons = await Lesson.find({ subModule: subMod._id }).sort({ order: 1 }).lean();
-            return {
-                ...subMod,
-                lessons: lessons.map(sanitizeLesson)
-            };
-        })
-    );
-
-    // 2. Fetch Direct Lessons (Legacy/Mixed - lessons directly under module without submodule)
-    const directLessons = await Lesson.find({ 
-        module: moduleId,
-        $or: [{ subModule: { $exists: false } }, { subModule: null }]
-    }).sort({ order: 1 }).lean();
-
+    // 1. Fetch Lessons in SubModule
+    const lessons = await Lesson.find({ subModule: subModuleId }).sort({ order: 1 }).lean();
 
     res.json({
-        module: moduleDoc,
-        subModules: subModulesWithLessons,
-        lessons: directLessons.map(sanitizeLesson)
+        subModule: subModuleDoc,
+        lessons: lessons.map(sanitizeLesson)
     });
 
   } catch (err) {
@@ -131,12 +113,10 @@ export const getLessonDetails = async (req, res) => {
       return res.status(404).json({ message: "Lesson not found" });
     }
 
-    // Determine Course ID
+    // Determine Course ID strictly via SubModule
     let courseId = null;
 
-    if (lesson.module && lesson.module.course) {
-      courseId = lesson.module.course.toString();
-    } else if (
+    if (
       lesson.subModule &&
       lesson.subModule.module &&
       lesson.subModule.module.course
@@ -189,7 +169,10 @@ export const downloadLessonResource = async (req, res) => {
     const { lessonId } = req.params;
     const studentId = req.user.id;
 
-    const lesson = await Lesson.findById(lessonId).populate("module");
+    const lesson = await Lesson.findById(lessonId).populate({
+      path: "subModule",
+      populate: { path: "module" }
+    });
     if (!lesson) return res.status(404).json({ message: "Resource not found" });
 
     if (lesson.type !== "pdf") {
@@ -203,11 +186,11 @@ export const downloadLessonResource = async (req, res) => {
     const now = new Date();
 
     // Safety check
-    if (!lesson.module || !lesson.module.course) {
+    if (!lesson.subModule || !lesson.subModule.module || !lesson.subModule.module.course) {
       return res.status(500).json({ message: "Lesson data corrupted" });
     }
 
-    const courseId = lesson.module.course.toString();
+    const courseId = lesson.subModule.module.course.toString();
 
     const isSubscribed = student.subscribedCourses.find(
       (sub) =>
