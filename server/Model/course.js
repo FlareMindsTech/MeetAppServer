@@ -40,6 +40,8 @@ const courseSchema = new mongoose.Schema(
       allowFullPayment: { type: Boolean, default: true },
       allowEMI: { type: Boolean, default: false },
       emiPlans: [emiPlanSchema],
+      allowRenewal: { type: Boolean, default: false },
+      renewalPlans: [renewalPlanSchema],
     },
 
     // ... other fields ...

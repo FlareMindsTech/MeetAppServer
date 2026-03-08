@@ -396,9 +396,13 @@ export const createCourse = async (req, res) => {
     // Cloudinary URL
     const thumbnail = req.file.path; 
     let parsedPaymentOptions = {};
-    if (typeof paymentOptions === "string") {
-    try { parsedPaymentOptions = JSON.parse(paymentOptions); } catch(e) {}
-}
+    if (paymentOptions) {
+        if (typeof paymentOptions === "string") {
+            try { parsedPaymentOptions = JSON.parse(paymentOptions); } catch(e) { console.error("Failed to parse payment options", e); }
+        } else {
+            parsedPaymentOptions = paymentOptions;
+        }
+    }
 
     const course = await Course.create({
       title,
@@ -428,7 +432,7 @@ export const updateCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays
+      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays, paymentOptions
     } = req.body;
 
     const course = await Course.findById(id);
@@ -448,6 +452,18 @@ export const updateCourse = async (req, res) => {
     course.durationInDays = Number(durationInDays) || course.durationInDays;
     if (req.body.discount !== undefined) {
       course.discount = Number(req.body.discount);
+    }
+
+    if (paymentOptions) {
+        let parsedOptions = {};
+        if (typeof paymentOptions === 'string') {
+            try { parsedOptions = JSON.parse(paymentOptions); } catch (e) { console.error("Failed to parse payment options in update", e); }
+        } else {
+            parsedOptions = paymentOptions;
+        }
+        if (Object.keys(parsedOptions).length > 0) {
+            course.paymentOptions = parsedOptions;
+        }
     }
 
     if (req.file) {
