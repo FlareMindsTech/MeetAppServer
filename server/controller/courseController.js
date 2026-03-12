@@ -382,7 +382,7 @@ export const enrollStudent = async (req, res) => {
 export const createCourse = async (req, res) => {
   try {
     const {
-      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays, paymentOptions
+      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays, paymentOptions, liveMeetings
     } = req.body;
 
     if (!title || !description || !category || !price || !duration || !durationInDays) {
@@ -419,6 +419,33 @@ export const createCourse = async (req, res) => {
       discount: Number(req.body.discount || 0),
     });
 
+    let parsedLiveMeetings = [];
+    if (liveMeetings) {
+        if (typeof liveMeetings === "string") {
+            try { parsedLiveMeetings = JSON.parse(liveMeetings); } catch(e) { console.error("Failed to parse live meetings", e); }
+        } else {
+            parsedLiveMeetings = liveMeetings;
+        }
+    }
+
+    if (parsedLiveMeetings && parsedLiveMeetings.length > 0) {
+      const meetingDocs = parsedLiveMeetings.map(m => {
+        let mDate = new Date();
+        if (m.date) mDate = new Date(m.date);
+        
+        return {
+           className: m.className || `${title} Live Class`,
+           date: mDate,
+           startTime: m.startTime || "10:00 AM",
+           endTime: m.endTime || "11:00 AM",
+           meetingUrl: m.meetingUrl || null,
+           courseId: course._id,
+           status: m.status || "Upcoming",
+        };
+      });
+      await Meeting.insertMany(meetingDocs);
+    }
+
     return res.status(201).json(course);
   } catch (err) {
     console.error(err);
@@ -432,7 +459,7 @@ export const updateCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays, paymentOptions
+      title, description, category, price, createdBy, duration, isLiveCourse, durationInDays, paymentOptions, liveMeetings
     } = req.body;
 
     const course = await Course.findById(id);
@@ -462,7 +489,12 @@ export const updateCourse = async (req, res) => {
             parsedOptions = paymentOptions;
         }
         if (Object.keys(parsedOptions).length > 0) {
-            course.paymentOptions = parsedOptions;
+            if (parsedOptions.allowFullPayment !== undefined) course.paymentOptions.allowFullPayment = parsedOptions.allowFullPayment;
+            if (parsedOptions.allowEMI !== undefined) course.paymentOptions.allowEMI = parsedOptions.allowEMI;
+            if (parsedOptions.emiPlans !== undefined) course.paymentOptions.emiPlans = parsedOptions.emiPlans;
+            if (parsedOptions.allowRenewal !== undefined) course.paymentOptions.allowRenewal = parsedOptions.allowRenewal;
+            if (parsedOptions.renewalPlans !== undefined) course.paymentOptions.renewalPlans = parsedOptions.renewalPlans;
+            course.markModified('paymentOptions');
         }
     }
 
@@ -471,6 +503,52 @@ export const updateCourse = async (req, res) => {
     }
 
     const updatedCourse = await course.save();
+
+    let parsedLiveMeetings = null;
+    if (liveMeetings) {
+        if (typeof liveMeetings === "string") {
+            try { parsedLiveMeetings = JSON.parse(liveMeetings); } catch(e) { console.error("Failed to parse live meetings", e); }
+        } else {
+            parsedLiveMeetings = liveMeetings;
+        }
+    }
+
+    if (parsedLiveMeetings) {
+      const existingIds = [];
+      for (const m of parsedLiveMeetings) {
+         let mDate = new Date();
+         if (m.date) mDate = new Date(m.date);
+         
+         if (m._id) {
+            existingIds.push(m._id);
+            await Meeting.findByIdAndUpdate(m._id, {
+               className: m.className || `${course.title} Live Class`,
+               date: mDate,
+               startTime: m.startTime || "10:00 AM",
+               endTime: m.endTime || "11:00 AM",
+               meetingUrl: m.meetingUrl || null,
+               status: m.status || "Upcoming"
+            });
+         } else {
+            const newM = await Meeting.create({
+               className: m.className || `${course.title} Live Class`,
+               date: mDate,
+               startTime: m.startTime || "10:00 AM",
+               endTime: m.endTime || "11:00 AM",
+               meetingUrl: m.meetingUrl || null,
+               courseId: course._id,
+               status: m.status || "Upcoming"
+            });
+            existingIds.push(newM._id);
+         }
+      }
+
+      await Meeting.deleteMany({
+         courseId: course._id,
+         _id: { $nin: existingIds }
+      });
+    }
+
     res.json(updatedCourse);
   } catch (err) {
     res.status(500).json({ message: err.message });
