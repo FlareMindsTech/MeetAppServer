@@ -465,18 +465,23 @@ export const updateCourse = async (req, res) => {
     const course = await Course.findById(id);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    course.title = title || course.title;
-    course.description = description || course.description;
-    course.category = category || course.category;
-    course.price = Number(price) || course.price;
-    course.createdBy = createdBy || course.createdBy;
-    course.duration = duration || course.duration;
-    course.isLiveCourse = isLiveCourse === "true";
+    if (title) course.title = title;
+    if (description) course.description = description;
+    if (category) course.category = category;
+    if (price !== undefined) course.price = Number(price);
+    if (createdBy) course.createdBy = createdBy;
+    if (duration) course.duration = duration;
+
+    if (isLiveCourse !== undefined) {
+        course.isLiveCourse = isLiveCourse === "true";
+    }
     if (req.body.isRecurring !== undefined) {
         course.isRecurring = req.body.isRecurring === "true";
     }
 
-    course.durationInDays = Number(durationInDays) || course.durationInDays;
+    if (durationInDays !== undefined) {
+        course.durationInDays = Number(durationInDays);
+    }
     if (req.body.discount !== undefined) {
       course.discount = Number(req.body.discount);
     }
@@ -489,6 +494,7 @@ export const updateCourse = async (req, res) => {
             parsedOptions = paymentOptions;
         }
         if (Object.keys(parsedOptions).length > 0) {
+            course.paymentOptions = course.paymentOptions || {};
             if (parsedOptions.allowFullPayment !== undefined) course.paymentOptions.allowFullPayment = parsedOptions.allowFullPayment;
             if (parsedOptions.allowEMI !== undefined) course.paymentOptions.allowEMI = parsedOptions.allowEMI;
             if (parsedOptions.emiPlans !== undefined) course.paymentOptions.emiPlans = parsedOptions.emiPlans;

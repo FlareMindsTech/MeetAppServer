@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 
 const emiPlanSchema = new mongoose.Schema(
   {
-    name: { type: String }, // e.g., "3 months EMI", "6 months EMI"
     plan_id: { type: String }, // optional Razorpay plan id (if using gateway plans)
     installments: { type: Number, required: true }, // number of installments
     interestPercent: { type: Number, default: 0 }, // optional interest %
