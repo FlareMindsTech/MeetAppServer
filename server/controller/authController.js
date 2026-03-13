@@ -59,8 +59,7 @@ export const register = async (req, res) => {
 
         token = jwt.sign(
             { id: newUser._id, role: newUser.role, email: newUser.email, sessionId: sessionId },
-            process.env.JWT_SECRET,
-            { expiresIn: "30d" }
+            process.env.JWT_SECRET
         );
     }
 
@@ -121,8 +120,7 @@ export const login = async (req, res) => {
 
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email, sessionId: sessionId },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" }
+      process.env.JWT_SECRET
     );
 
     res.json({
@@ -224,7 +222,21 @@ export const resetPassword = async (req, res) => {
 // @route   POST /api/auth/logout
 export const logout = async (req, res) => {
   try {
-    
+    const authHeader = req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123", { ignoreExpiration: true });
+        const user = await User.findById(decoded.id);
+        if (user) {
+          user.sessionId = crypto.randomBytes(16).toString("hex");
+          await user.save();
+        }
+      } catch (err) {
+        // Ignore token errors on logout
+      }
+    }
+
     res.status(200).json({
       message: "Logged out successfully. Please clear your client token.",
     });
