@@ -785,10 +785,11 @@ export const razorpayWebhook = async (req, res) => {
     const signature = req.headers["x-razorpay-signature"];
     const raw = req.rawBody || req.body; 
     
-    // 1. Verify Webhook Security
+    // 1. Verify Webhook Security - Use req.rawBody if available for Vercel
+    const verifyBody = req.rawBody || raw;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET)
-      .update(raw)
+      .update(verifyBody)
       .digest("hex");
 
     if (expectedSignature !== signature) {
@@ -934,12 +935,10 @@ export const razorpayWebhook = async (req, res) => {
       localSub.status = "cancelled";
       await localSub.save();
 
-      const student = await User.findById(localSub.student);
-      if (student) {
-        // Remove access immediately upon cancellation
-        student.subscribedCourses = student.subscribedCourses.filter((s) => String(s.courseId) !== String(localSub.course));
-        await student.save();
-      }
+      // OPTIONAL LOGIC: We no longer remove access immediately.
+      // The user keeps access until localSub.expiresAt (the end of the current paid period).
+      console.log(`Subscription ${subId} cancelled. Access remains until ${localSub.expiresAt}`);
+      
       return res.status(200).json({ status: "ok" });
     }
 
@@ -990,13 +989,10 @@ export const cancelSubscription = async (req, res) => {
     subscription.status = "cancelled";
     await subscription.save();
 
-    const student = await User.findById(subscription.student);
-    if (student) {
-      student.subscribedCourses = student.subscribedCourses.filter((sub) => String(sub.courseId) !== String(subscription.course));
-      await student.save();
-    }
+    // Note: We no longer remove access immediately from User record.
+    // Access will naturally expire when current period ends.
 
-    res.json({ message: "Subscription cancelled successfully" });
+    res.json({ message: "Subscription cancelled successfully. Access remains until current period expires." });
   } catch (err) {
     console.error("cancelSubscription err:", err);
     res.status(500).json({ message: err.message || "Internal Server Error" });
