@@ -100,9 +100,39 @@ export const getPublicCourses = async (req, res) => {
             return { ...m, meetingUrl: null };
         });
 
+        // 3. Detailed Subscription Info (EMI/Balance)
+        let subscriptionDetails = null;
+        if (studentId && !isStaff && isSubscribed) {
+          const sub = await Subscription.findOne({ 
+            student: studentId, 
+            course: course._id 
+          }).lean();
+
+          if (sub) {
+            const totalAmount = sub.emi?.totalAmount || sub.amount || 0;
+            const perInstallment = sub.emi?.perInstallmentAmount || 0;
+            const paidAmount = (sub.paid_count || 0) * perInstallment;
+            
+            subscriptionDetails = {
+              type: sub.type,
+              status: sub.status,
+              totalCount: sub.total_count,
+              paidCount: sub.paid_count,
+              remainingCount: Math.max(0, (sub.total_count || 0) - (sub.paid_count || 0)),
+              totalAmount: totalAmount,
+              paidAmount: paidAmount,
+              balanceAmount: Math.max(0, totalAmount - paidAmount),
+              nextPaymentAt: sub.next_payment_at,
+              expiresAt: sub.expiresAt
+            };
+          }
+        }
+
         return {
           ...course,
           discountedPrice: getDiscountedPrice(course),
+          isSubscribed,
+          subscriptionDetails,
           modules: modulesWithContent,
           liveMeetings: securedMeetings
         };
@@ -258,10 +288,39 @@ export const getCourseDetails = async (req, res) => {
         return { ...m, meetingUrl: null };
     });
 
+    // 4. Detailed Subscription Info (EMI/Balance)
+    let subscriptionDetails = null;
+    if (studentId && !isStaff) {
+      const sub = await Subscription.findOne({ 
+        student: studentId, 
+        course: req.params.id 
+      }).lean();
+
+      if (sub) {
+        const totalAmount = sub.emi?.totalAmount || sub.amount || 0;
+        const perInstallment = sub.emi?.perInstallmentAmount || 0;
+        const paidAmount = (sub.paid_count || 0) * perInstallment;
+        
+        subscriptionDetails = {
+          type: sub.type,
+          status: sub.status,
+          totalCount: sub.total_count,
+          paidCount: sub.paid_count,
+          remainingCount: Math.max(0, (sub.total_count || 0) - (sub.paid_count || 0)),
+          totalAmount: totalAmount,
+          paidAmount: paidAmount,
+          balanceAmount: Math.max(0, totalAmount - paidAmount),
+          nextPaymentAt: sub.next_payment_at,
+          expiresAt: sub.expiresAt
+        };
+      }
+    }
+
     res.json({ 
       ...course, 
       discountedPrice: getDiscountedPrice(course),
       isSubscribed,
+      subscriptionDetails,
       modules: modulesWithContent, 
       liveMeetings: securedMeetings 
     });
