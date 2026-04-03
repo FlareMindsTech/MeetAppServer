@@ -14,7 +14,8 @@ export const getProfile = async (req, res) => {
       .populate({
         path: "subscribedCourses.courseId",
         select: "title description category price duration durationInDays thumbnail isLiveCourse isRecurring"
-      });
+      })
+      .lean();
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Filter out subscriptions where the referenced course has been deleted (courseId is null)
@@ -113,7 +114,9 @@ export const getMeetings = async (req, res) => {
   try {
     const studentId = req.user.id;
     const meetings = await Meeting.find({ "students.studentId": studentId })
-      .sort({ date: 1, startTime: 1 });
+      .select("className meetingUrl date startTime endTime duration status courseId")
+      .sort({ date: 1, startTime: 1 })
+      .lean();
 
     res.json(meetings);
   } catch (err) {
@@ -128,7 +131,7 @@ export const getMyActiveSubscriptions = async (req, res) => {
     const user = await User.findById(req.user.id).populate({
       path: "subscribedCourses.courseId",
       select: "title thumbnail description price isLiveCourse duration category"
-    });
+    }).lean();
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -166,7 +169,7 @@ export const getSubscribedCourseVideo = async (req, res) => {
     }
     // Find the subscription
     const subscription = user.subscribedCourses.find(
-      (sub) => sub.courseId.toString() === courseId
+      (sub) => sub.courseId && sub.courseId.toString() === courseId
     );
 
     if (!subscription) {
@@ -177,7 +180,7 @@ export const getSubscribedCourseVideo = async (req, res) => {
       return res.status(403).json({ message: "Your subscription has expired" });
     }
 
-    const course = await Course.findById(courseId).select("title thumbnail description category");
+    const course = await Course.findById(courseId).select("title thumbnail description category").lean();
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }

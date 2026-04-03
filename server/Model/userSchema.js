@@ -47,6 +47,12 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for faster lookups
+userSchema.index({ role: 1 });
+userSchema.index({ isActive: 1 });
+userSchema.index({ "subscribedCourses.courseId": 1 });
+userSchema.index({ "subscribedCourses.expiresAt": 1 });
+
 // Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();

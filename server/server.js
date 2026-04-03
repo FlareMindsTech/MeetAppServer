@@ -13,8 +13,13 @@ import quizRoutes from "./routes/quizRoutes.js";
 import featureRoutes from "./routes/featureRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import meetingRoutes from "./routes/meetingRoutes.js";
+import { initEmailAutomation } from "./utils/emailService.js";
 
 dotenv.config();
+
+// --- AUTOMATED SERVICES ---
+initEmailAutomation();
+
 const app = express();
 
 // --- GLOBAL CONFIG: STOP BUFFERING ---
@@ -60,7 +65,20 @@ const connectDB = async () => {
   return cached.conn;
 };
 
+// --- PERFORMANCE LOGGER ---
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (!req.originalUrl.includes("favicon")) {
+        console.log(`[PERF] ${req.method} ${req.originalUrl} - ${duration}ms`);
+    }
+  });
+  next();
+});
+
 // --- CONNECTION MIDDLEWARE ---
+
 app.use(async (req, res, next) => {
   
   if (req.path === "/") return next();

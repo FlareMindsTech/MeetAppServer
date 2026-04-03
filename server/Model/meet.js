@@ -59,4 +59,10 @@ const meetingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+meetingSchema.index({ courseId: 1 });
+meetingSchema.index({ date: 1 });
+meetingSchema.index({ status: 1 });
+meetingSchema.index({ "students.studentId": 1 });
+
+
 export default mongoose.model("Meeting", meetingSchema);

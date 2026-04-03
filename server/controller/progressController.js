@@ -91,11 +91,14 @@ export const getStudentProgress = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Get the user's subscribed courses
-    const user = await User.findById(userId).populate({
-      path: "subscribedCourses.courseId",
-      select: "title thumbnail",
-    });
+    // 1 & 2. Parallelize fetching User (Subscribed Courses) and Progress Records
+    const [user, progressRecords] = await Promise.all([
+      User.findById(userId).populate({
+        path: "subscribedCourses.courseId",
+        select: "title thumbnail",
+      }).lean(),
+      Progress.find({ student: userId }).lean()
+    ]);
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -103,9 +106,6 @@ export const getStudentProgress = async (req, res) => {
 
     // Filter valid subscriptions in case a course was deleted
     const validSubscriptions = user.subscribedCourses.filter(sub => sub.courseId);
-
-    // 2. Find all progress records for this student
-    const progressRecords = await Progress.find({ student: userId }).lean();
 
     // Map progress records by courseId
     const progressMap = {};
@@ -162,14 +162,14 @@ export const getModuleProgress = async (req, res) => {
     }
 
     // 3. Find the course ID (to locate the correct Progress record)
-    const module = await Module.findById(moduleId);
+    const module = await Module.findById(moduleId).lean();
     if (!module) return res.status(404).json({ message: "Module not found" });
 
     // 4. Get User's Progress record for this Course
     const progress = await Progress.findOne({
       student: userId,
       course: module.course,
-    });
+    }).lean();
 
     if (!progress) {
       return res.json({

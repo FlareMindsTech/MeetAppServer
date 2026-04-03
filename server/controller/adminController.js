@@ -2,7 +2,7 @@
 // import fs from "fs";
 import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
-import transporter from "./transporter.js";
+import { sendEnrollmentEmail } from "../utils/emailService.js";
 import Subscription from "../Model/subscription.js";
 import Module from "../Model/module.js";
 import SubModule from "../Model/subModule.js";
@@ -73,13 +73,11 @@ export const enrollStudent = async (req, res) => {
     }
 
     try {
-      await transporter.sendMail({
-        from: `"Admin" <${process.env.EMAIL_USER}>`,
-        to: student.email,
-        subject: `Enrollment Confirmed: ${course.title}`,
-        html: `<p>Hello ${
-          student.FirstName || ""
-        },</p><p>You have been enrolled in <b>${course.title}</b>.</p>`,
+      await sendEnrollmentEmail({
+        student,
+        course,
+        expiresAt,
+        isOneTime: false
       });
     } catch (emailErr) {
       console.error("Email failed:", emailErr);
@@ -378,9 +376,19 @@ const canManageTarget = (requesterRole, targetRole) => {
 
 export const getAllStudents = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
     const students = await User.find({ role: "student" })
-      .select("-password -rawPassword")
-      .sort({ createdAt: -1 });
+      .select("FirstName LastName email phoneNumber photo isActive createdAt") // Projection: only needed fields
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const totalStudents = await User.countDocuments({ role: "student" });
+    res.set("X-Total-Count", totalStudents);
     res.json(students);
   } catch (err) {
     res.status(500).json({ message: err.message });

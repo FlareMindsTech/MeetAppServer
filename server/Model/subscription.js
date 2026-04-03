@@ -60,6 +60,10 @@ const subscriptionSchema = new mongoose.Schema(
 
     next_payment_at: { type: Date },
 
+    // If true, it's a recurring monthly subscription. 
+    // If false, it's a fixed-installment EMI plan.
+    isRecurring: { type: Boolean, default: false },
+
     // Status now includes 'completed'
     status: {
       type: String,
@@ -78,6 +82,12 @@ const subscriptionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+subscriptionSchema.index({ student: 1, course: 1 });
+subscriptionSchema.index({ status: 1 });
+subscriptionSchema.index({ razorpay_subscription_id: 1 });
+subscriptionSchema.index({ expiresAt: 1 });
+
 
 const Subscription = mongoose.model("Subscription", subscriptionSchema);
 export default Subscription;

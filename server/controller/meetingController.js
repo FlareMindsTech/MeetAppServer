@@ -1,7 +1,11 @@
 import Meeting from "../Model/meet.js";
 import User from "../Model/userSchema.js";
-import transporter from "./transporter.js";
-import nodemailer from "nodemailer";
+import { 
+    sendMeetingInvite, 
+    sendMeetingRemovedEmail, 
+    sendMeetingRescheduledEmail, 
+    sendMeetingCancelledEmail 
+} from "../utils/emailService.js";
 import crypto from "crypto";
 
 function parseAMPM(time) {
@@ -172,46 +176,14 @@ export const allocateStudents = async (req, res) => {
       try {
         // If rawPassword exists, this is first meeting → send password
         if (student.rawPassword) {
-          await transporter.sendMail({
-            from: `"Admin" <${process.env.EMAIL_USER}>`,
-            to: student.email,
-            subject: `Meeting Invitation: ${meeting.className}`,
-            html: `
-              <p>Hello <b>${student.FirstName}</b>,</p>
-              <p>You have been allocated to the meeting:</p>
-              <ul>
-                <li>Class: ${meeting.className}</li>
-                <li>Date: ${meeting.date.toDateString()}</li>
-                <li>Meeting Link: <a href="${dummyLink}">${dummyLink}</a></li>
-                <li>Time: ${meeting.startTime} - ${meeting.endTime}</li>
-                 <li><b>Duration:</b> ${meeting.duration} minutes</li>
-                <li>Password: ${student.rawPassword}</li>
-              </ul>
-              <p>Please login using this password.</p>
-            `,
-          });
+          await sendMeetingInvite({ student, meeting, dummyLink, isFirstMeeting: true });
 
           // Clear rawPassword after first email
           student.rawPassword = undefined;
           await student.save();
         } else {
           // Subsequent meetings → only send notification
-          await transporter.sendMail({
-            from: `"Admin" <${process.env.EMAIL_USER}>`,
-            to: student.email,
-            subject: `New Meeting Allocated: ${meeting.className}`,
-            html: `
-              <p>Hello <b>${student.FirstName}</b>,</p>
-              <p>You have been allocated to a new meeting:</p>
-              <ul>
-                <li>Class: ${meeting.className}</li>
-                <li>Date: ${meeting.date.toDateString()}</li>
-                <li>Time: ${meeting.startTime} - ${meeting.endTime}</li>
-                 <li><b>Duration:</b> ${meeting.duration} minutes</li>
-              </ul>
-              <p>Please login to view details.</p>
-            `,
-          });
+          await sendMeetingInvite({ student, meeting, isFirstMeeting: false });
         }
 
         emailResults.push({ student: student.email, status: "Email sent" });
@@ -283,7 +255,7 @@ export const allocateStudents = async (req, res) => {
 //         if (student.rawPassword) {
 //           // First meeting email with password
 //           await transporter.sendMail({
-//             from: `"Admin" <${process.env.EMAIL_USER}>`,
+//             from: `"Aadvi Fashion Institution" <${process.env.EMAIL_USER}>`,
 //             to: student.email,
 //             subject: `Meeting Invitation: ${meeting.className}`,
 //             html: `
@@ -306,7 +278,7 @@ export const allocateStudents = async (req, res) => {
 //         } else {
 //           // Subsequent allocation email
 //           await transporter.sendMail({
-//             from: `"Admin" <${process.env.EMAIL_USER}>`,
+//             from: `"Aadvi Fashion Institution" <${process.env.EMAIL_USER}>`,
 //             to: student.email,
 //             subject: `New Meeting Allocated: ${meeting.className}`,
 //             html: `
@@ -375,22 +347,7 @@ export const removeStudents = async (req, res) => {
     const emailResults = [];
     for (let student of students) {
       try {
-        await transporter.sendMail({
-          from: `"Admin" <${process.env.EMAIL_USER}>`,
-          to: student.email,
-          subject: `Removed from Meeting: ${meeting.className}`,
-          html: `
-            <p>Hello <b>${student.FirstName}</b>,</p>
-            <p>You have been removed from:</p>
-            <ul>
-              <li><b>Class:</b> ${meeting.className}</li>
-              <li><b>Date:</b> ${meeting.date.toDateString()}</li>
-              <li><b>Time:</b> ${meeting.startTime} - ${meeting.endTime}</li>
-              <li><b>Password:</b> ${student.rawPassword}</li>
-            </ul>
-            <p>Regards,<br>Admin</p>
-          `,
-        });
+        await sendMeetingRemovedEmail({ student, meeting });
         emailResults.push({ student: student.email, status: "Sent" });
       } catch (err) {
         emailResults.push({
@@ -437,22 +394,7 @@ export const rescheduleMeeting = async (req, res) => {
     for (let sObj of meeting.students) {
       const student = sObj.studentId;
       try {
-        await transporter.sendMail({
-          from: `"Admin" <${process.env.EMAIL_USER}>`,
-          to: student.email,
-          subject: `Rescheduled: ${meeting.className}`,
-          html: `
-            <p>Hello <b>${student.FirstName}</b>,</p>
-            <p>The meeting has been rescheduled:</p>
-            <ul>
-              <li><b>Class:</b> ${meeting.className}</li>
-              <li><b>Date:</b> ${meeting.date.toDateString()}</li>
-              <li><b>Time:</b> ${meeting.startTime} - ${meeting.endTime}</li>
-              <li><b>Duration:</b> ${meeting.duration} minutes</li>
-            </ul>
-            <p>Please update your calendar.<br>Regards,<br>Admin</p>
-          `,
-        });
+        await sendMeetingRescheduledEmail({ student, meeting });
         emailResults.push({ student: student.email, status: "Sent" });
       } catch (err) {
         emailResults.push({
@@ -486,21 +428,7 @@ export const deleteMeeting = async (req, res) => {
     for (let sObj of meeting.students) {
       const student = sObj.studentId;
       try {
-        await transporter.sendMail({
-          from: `"Admin" <${process.env.EMAIL_USER}>`,
-          to: student.email,
-          subject: `Meeting Cancelled: ${meeting.className}`,
-          html: `
-            <p>Hello <b>${student.FirstName}</b>,</p>
-            <p>The meeting has been cancelled:</p>
-            <ul>
-              <li><b>Class:</b> ${meeting.className}</li>
-              <li><b>Date:</b> ${meeting.date.toDateString()}</li>
-              <li><b>Time:</b> ${meeting.startTime} - ${meeting.endTime}</li>
-            </ul>
-            <p>Regards,<br>Admin</p>
-          `,
-        });
+        await sendMeetingCancelledEmail({ student, meeting });
         emailResults.push({ student: student.email, status: "Sent" });
       } catch (err) {
         emailResults.push({
@@ -567,11 +495,20 @@ export const getAllMeetings = async (req, res) => {
       return res.status(403).json({ error: "Not authorized. Admin/Owner only." });
     }
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
     const meetings = await Meeting.find({})
       .sort({ date: -1 })
+      .skip(skip)
+      .limit(limit)
       .populate("courseId", "title")
-      .populate("students.studentId", "FirstName email")
+      .populate("students.studentId", "FirstName email") // Only select essential student info
       .lean();
+
+    const totalMeetings = await Meeting.countDocuments({});
+    res.set("X-Total-Count", totalMeetings);
 
     const meetingsWithStatus = meetings.map((meeting) => ({
       ...meeting,
@@ -592,13 +529,17 @@ export const getMyMeetings = async (req, res) => {
     const studentId = req.user.id;
 
     
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const skip = (page - 1) * limit;
+
     const meetings = await Meeting.find({
       "students.studentId": studentId,
-      // Removed deleteAt filter to show history
-      // deleteAt: { $gte: new Date() },
     })
       .select("-students") 
-      .sort({ date: -1, startTime: 1 }) // Sort by date descending for history
+      .sort({ date: -1, startTime: 1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
     const meetingsWithStatus = meetings.map((meeting) => ({

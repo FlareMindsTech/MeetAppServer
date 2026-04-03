@@ -25,4 +25,7 @@ const progressSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+progressSchema.index({ student: 1, course: 1 });
+
+
 export default mongoose.model("Progress", progressSchema);

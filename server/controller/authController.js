@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../Model/userSchema.js";
 import crypto from "crypto";
-import transporter from "./transporter.js";
+import { sendPasswordResetEmail } from "../utils/emailService.js";
 
 // @desc    Register a new user (Student, Admin, etc.)
 // @route   POST /api/auth/register
@@ -141,7 +141,6 @@ export const login = async (req, res) => {
 };
 
 // @desc    Request Password Reset (Send Email)
-// @route   POST /api/auth/forgot-password
 export const requestPasswordReset = async (req, res) => {
   try {
     const { email } = req.body;
@@ -159,21 +158,9 @@ export const requestPasswordReset = async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
     await user.save();
 
-    // 3. Send Email
-    const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
-    
+    // 3. Send Email using centralized service
     try {
-      await transporter.sendMail({
-        to: user.email,
-        subject: "Password Reset Request",
-        html: `
-          <h3>Password Reset</h3>
-          <p>Click the link below to reset your password:</p>
-          <a href="${resetUrl}">${resetUrl}</a>
-          <p>This link expires in 1 hour.</p>
-        `,
-      });
-      
+      await sendPasswordResetEmail(user, resetToken);
       res.json({ message: "If this email exists, a reset link has been sent." });
     } catch (emailErr) {
       user.resetPasswordToken = undefined;

@@ -48,4 +48,9 @@ const courseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+courseSchema.index({ category: 1 });
+courseSchema.index({ isLiveCourse: 1 });
+courseSchema.index({ title: "text" }); 
+
+
 export default mongoose.model("Course", courseSchema);

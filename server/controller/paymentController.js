@@ -4,7 +4,7 @@ import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
 import Payment from "../Model/payment.js";
 import Subscription from "../Model/subscription.js";
-import transporter from "./transporter.js";
+import { sendEnrollmentEmail, sendPaymentExtensionEmail } from "../utils/emailService.js";
 import mongoose from "mongoose";
 import Lesson from "../Model/lesson.js";
 import Module from "../Model/module.js";
@@ -15,26 +15,6 @@ const getDiscountedPrice = (course) => {
   return Math.round(course.price - discountAmount);
 };
 
-/* ---------------- Helper: Email ---------------- */
-async function sendEnrollmentEmail({ student, course, subjectSuffix, messageLines = [], expiresAt = null }) {
-  try {
-    const expiryDateString = expiresAt ? new Date(expiresAt).toLocaleDateString("en-US") : "N/A";
-    const htmlLines = `
-      <p>Hello ${student.FirstName || student.email},</p>
-      ${messageLines.map((l) => `<p>${l}</p>`).join("")}
-      <p><b>Course:</b> ${course.title}</p>
-      <p><b>Access Expires:</b> ${expiryDateString}</p>
-    `;
-    await transporter.sendMail({
-      from: `"SathyaGomani Academy" <${process.env.EMAIL_USER}>`,
-      to: student.email,
-      subject: `${course.title} - ${subjectSuffix}`,
-      html: htmlLines,
-    });
-  } catch (err) {
-    console.error("sendEnrollmentEmail failed:", err);
-  }
-}
 
 /* ---------------- 1) Initiate Payment wrapper ---------------- */
 // export const initiatePayment = async (req, res) => {
@@ -229,12 +209,12 @@ export const verifyPayment = async (req, res) => {
       { upsert: true, new: true }
     );
 
+    // Send Email using centralized service
     await sendEnrollmentEmail({
       student,
       course,
-      subjectSuffix: "Payment Successful & Enrollment Confirmed",
-      messageLines: [accessMessage, `Receipt ID: ${razorpay_payment_id}`],
       expiresAt,
+      isOneTime: true
     });
 
     res.status(200).json({ message: "Payment successful! Course access granted." });
@@ -855,53 +835,61 @@ export const razorpayWebhook = async (req, res) => {
 
       if (student) {
         const isRecurring = localSub.course.isRecurring === true; 
+        const isOneTime = localSub.type === "one-time";
+        const isEMI = localSub.type === "subscription" && !isRecurring;
+        const totalCount = localSub.total_count || 1;
+        const isFinalEMIPayment = isEMI && localSub.paid_count >= totalCount;
+
         let expiresAt;
+        let durationInDays = 31; // Default to rolling access: 1 month + 1 day grace
 
-        if (localSub.paid_count === 1) {
-          // INITIAL ENROLLMENT
-          const now = new Date();
-          // Use 30 days for renewal, otherwise use course duration
-          const duration = isRecurring ? 30 : (localSub.course.durationInDays || 365);
-          expiresAt = new Date(now);
-          expiresAt.setDate(expiresAt.getDate() + parseInt(duration, 10));
-
-          const subIndex = student.subscribedCourses.findIndex((s) => String(s.courseId) === String(localSub.course._id));
-          if (subIndex >= 0) {
-            student.subscribedCourses[subIndex].subscribedAt = now;
-            student.subscribedCourses[subIndex].expiresAt = expiresAt;
-          } else {
-            student.subscribedCourses.push({ courseId: localSub.course._id, subscribedAt: now, expiresAt });
-          }
-          await student.save();
-          localSub.expiresAt = expiresAt;
-
-          await sendEnrollmentEmail({
-            student,
-            course: localSub.course,
-            subjectSuffix: "Enrollment Confirmed",
-            messageLines: ["Access granted to your course.", `Payment ID: ${paymentEntity?.id || "N/A"}`],
-            expiresAt,
-          });
+        if (isOneTime || isFinalEMIPayment) {
+            // Give full course duration for one-time payments or completed EMI plans
+            durationInDays = localSub.course.durationInDays || 365;
+        } else if (isRecurring) {
+            durationInDays = 30; // Standard monthly renewal
         } else {
-          // RENEWAL / EMI INSTALLMENT
-          const subIndex = student.subscribedCourses.findIndex((s) => String(s.courseId) === String(localSub.course._id));
-          if (subIndex >= 0) {
-            // For recurring, we always set +30 days from the moment of payment
-            let curExpires = new Date();
-            curExpires.setDate(curExpires.getDate() + 30);
-            
-            student.subscribedCourses[subIndex].expiresAt = curExpires;
-            await student.save();
-            localSub.expiresAt = curExpires;
-          }
+            // Rolling EMI access
+            durationInDays = 31;
+        }
 
-          await sendEnrollmentEmail({
-            student,
-            course: localSub.course,
-            subjectSuffix: isRecurring ? "Subscription Renewed" : "EMI Payment Received",
-            messageLines: ["Your access has been extended.", `Installment ${localSub.paid_count} recorded.`],
-            expiresAt: localSub.expiresAt,
-          });
+        const now = new Date();
+        expiresAt = new Date(now);
+        expiresAt.setDate(expiresAt.getDate() + parseInt(durationInDays, 10));
+
+        const subIndex = student.subscribedCourses.findIndex((s) => String(s.courseId) === String(localSub.course._id));
+        if (subIndex >= 0) {
+            // Update existing enrollment
+            if (localSub.paid_count === 1) student.subscribedCourses[subIndex].subscribedAt = now;
+            student.subscribedCourses[subIndex].expiresAt = expiresAt;
+        } else {
+            // New enrollment
+            student.subscribedCourses.push({ 
+                courseId: localSub.course._id, 
+                subscribedAt: now, 
+                expiresAt 
+            });
+        }
+        await student.save();
+        localSub.expiresAt = expiresAt;
+
+        // Send Email using centralized service
+        if (localSub.paid_count === 1) {
+            await sendEnrollmentEmail({
+                student,
+                course: localSub.course,
+                expiresAt,
+                isOneTime: false
+            });
+        } else {
+            await sendPaymentExtensionEmail({
+                student,
+                course: localSub.course,
+                paidCount: localSub.paid_count,
+                totalCount: localSub.total_count,
+                expiresAt,
+                isRecurring
+            });
         }
       }
 
