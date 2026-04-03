@@ -33,28 +33,40 @@ export const getPublicCourses = async (req, res) => {
     // Support "My Courses" view via the same API
     if ((type === "my" || type === "purchased") && studentId) {
         const student = await User.findById(studentId).lean();
-        const enrolledCourseIds = (student?.subscribedCourses || []).filter(s => s.courseId).map(s => s.courseId);
-        filter._id = { $in: enrolledCourseIds };
+        const enrolledCourseIds = (student?.subscribedCourses || [])
+            .map(s => s.courseId?.toString())
+            .filter(Boolean); // Clean IDs
+        
+        // Remove duplicates to be safe, but keep it as unique courses for the list
+        const uniqueEnrolledIds = [...new Set(enrolledCourseIds)];
+        filter._id = { $in: uniqueEnrolledIds };
+    } else {
+        // Only apply these filters for Public/Browse view
+        if (type === "live") filter.isLiveCourse = true;
+        if (type === "recorded") filter.isLiveCourse = false;
+        
+        // Add Category filter if provided from UI
+        if (req.query.category && req.query.category !== "All") {
+            filter.category = req.query.category;
+        }
     }
-
-    if (type === "live") filter.isLiveCourse = true;
-    if (type === "recorded") filter.isLiveCourse = false;
 
     // Cache static data for 60 seconds
     res.set("Cache-Control", "public, max-age=60");
 
     const page = parseInt(req.query.page) || 1;
-    // Don't paginate if show all (my courses) or as requested by the UI
     const limit = (type === "my" || type === "purchased") ? 2000 : (parseInt(req.query.limit) || 50);
     const skip = (page - 1) * limit;
 
     // 1. Parallelize initial queries (User, Courses, Total Count)
-    const [student, courses, totalCourses] = await Promise.all([
+    const [student, courses, countOverride] = await Promise.all([
       (studentId && !isStaff) ? User.findById(studentId).lean() : Promise.resolve(null),
       Course.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).select("-description").lean(),
       Course.countDocuments(filter)
     ]);
 
+    // Use count from filter or override for My Courses
+    const totalCourses = countOverride;
     res.set("X-Total-Count", totalCourses);
     res.set("X-Total-Pages", Math.ceil(totalCourses / limit));
 
