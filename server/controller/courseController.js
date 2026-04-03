@@ -27,161 +27,21 @@ export const getPublicCourses = async (req, res) => {
     let filter = {};
 
     const studentId = req.user?.id;
-    const userRole = (req.user?.role || "").toLowerCase().trim();
-    const isStaff = userRole === "admin" || userRole === "owner";
 
-    // Support "My Courses" view via the same API
+    // "My Courses" logic from before
     if ((type === "my" || type === "purchased") && studentId) {
         const student = await User.findById(studentId).lean();
         const enrolledCourseIds = (student?.subscribedCourses || [])
             .map(s => s.courseId?.toString())
-            .filter(Boolean); // Clean IDs
-        
-        // Remove duplicates to be safe, but keep it as unique courses for the list
-        const uniqueEnrolledIds = [...new Set(enrolledCourseIds)];
-        filter._id = { $in: uniqueEnrolledIds };
+            .filter(Boolean);
+        filter._id = { $in: enrolledCourseIds };
     } else {
-        // Only apply these filters for Public/Browse view
-        if (type === "live") filter.isLiveCourse = true;
         if (type === "recorded") filter.isLiveCourse = false;
-        
-        // Add Category filter if provided from UI
-        if (req.query.category && req.query.category !== "All") {
-            filter.category = req.query.category;
-        }
+        if (type === "live") filter.isLiveCourse = true;
     }
 
-    // Cache static data for 60 seconds
-    res.set("Cache-Control", "public, max-age=60");
-
-    const page = parseInt(req.query.page) || 1;
-    const limit = (type === "my" || type === "purchased") ? 2000 : (parseInt(req.query.limit) || 50);
-    const skip = (page - 1) * limit;
-
-    // 1. Parallelize initial queries (User, Courses, Total Count)
-    const [student, courses, countOverride] = await Promise.all([
-      (studentId && !isStaff) ? User.findById(studentId).lean() : Promise.resolve(null),
-      Course.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).select("-description").lean(),
-      Course.countDocuments(filter)
-    ]);
-
-    // Use count from filter or override for My Courses
-    const totalCourses = countOverride;
-    res.set("X-Total-Count", totalCourses);
-    res.set("X-Total-Pages", Math.ceil(totalCourses / limit));
-
-    // --- BULK LOADING: FETCH DATA AT ONCE (ABSOLUTE SPEED) ---
-    const courseIds = courses.map(c => c._id);
-    
-    // Parallel fetch of all related data
-    const [allModules, allMeetings, subscriptions] = await Promise.all([
-      Module.find({ course: { $in: courseIds } }).select("-description").sort("order").lean(),
-      Meeting.find({ courseId: { $in: courseIds } }).sort({ date: 1, startTime: 1 }).lean(),
-      (studentId && !isStaff) ? Subscription.find({ student: studentId, course: { $in: courseIds } }).lean() : Promise.resolve([])
-    ]);
-
-    // Gather IDs for deeper fetching
-    const allModuleIds = allModules.map(m => m._id);
-    const [allSubModules] = await Promise.all([
-        SubModule.find({ module: { $in: allModuleIds } }).select("-description").sort("order").lean(),
-    ]);
-
-    const allSubModIds = allSubModules.map(s => s._id);
-    const [allLessons, allQuizzes] = await Promise.all([
-        Lesson.find({ subModule: { $in: allSubModIds } }).select("-description").sort("order").lean(),
-        Quiz.find({ subModule: { $in: allSubModIds } }).lean()
-    ]);
-
-    // Create fast lookup maps
-    const subMapByCourse = (studentId && !isStaff) ? new Map(subscriptions.map(s => [s.course.toString(), s])) : new Map();
-    const modulesByCourse = new Map(); allModules.forEach(m => {
-        const cId = m.course.toString();
-        if(!modulesByCourse.has(cId)) modulesByCourse.set(cId, []);
-        modulesByCourse.get(cId).push(m);
-    });
-    const subModsByMod = new Map(); allSubModules.forEach(s => {
-        const mId = s.module.toString();
-        if(!subModsByMod.has(mId)) subModsByMod.set(mId, []);
-        subModsByMod.get(mId).push(s);
-    });
-    const lessonsBySubMod = new Map(); allLessons.forEach(l => {
-        const sId = l.subModule.toString();
-        if(!lessonsBySubMod.has(sId)) lessonsBySubMod.set(sId, []);
-        lessonsBySubMod.get(sId).push(l);
-    });
-    const quizzesBySubMod = new Map(allQuizzes.map(q => [q.subModule.toString(), q]));
-    const meetingsByCourse = new Map(); allMeetings.forEach(m => {
-        const cId = m.courseId.toString();
-        if(!meetingsByCourse.has(cId)) meetingsByCourse.set(cId, []);
-        meetingsByCourse.get(cId).push(m);
-    });
-
-    const now = new Date();
-    const coursesWithContent = courses.map((course) => {
-        const courseIdStr = course._id.toString();
-        const sub = subMapByCourse.get(courseIdStr);
-        const isActive = sub && new Date(sub.expiresAt) > now;
-        const isSubscribed = isStaff || isActive;
-
-        // 1. Map Modules
-        const courseModules = modulesByCourse.get(courseIdStr) || [];
-        const modulesWithContent = courseModules.map(module => {
-            const modSubMods = subModsByMod.get(module._id.toString()) || [];
-            const subModulesWithLessons = modSubMods.map(subMod => {
-                const subModIdStr = subMod._id.toString();
-                const lessons = lessonsBySubMod.get(subModIdStr) || [];
-                const securedLessons = lessons.map(lesson => {
-                    if (isStaff || isSubscribed) return lesson;
-                    const { contentUrl, ...lessonData } = lesson;
-                    return { ...lessonData, contentUrl: null };
-                });
-                const quiz = quizzesBySubMod.get(subModIdStr);
-                return { ...subMod, lessons: securedLessons, quiz: (isStaff || isSubscribed) ? quiz : null };
-            });
-            return { ...module, subModules: subModulesWithLessons };
-        });
-
-        // 2. Map Meetings
-        const courseMeetings = meetingsByCourse.get(courseIdStr) || [];
-        const securedMeetings = courseMeetings.map(m => {
-            if (isStaff || isSubscribed) return m;
-            return { ...m, meetingUrl: null };
-        });
-
-        // 3. Calc Subscription Details
-        let subscriptionDetails = null;
-        if (sub) {
-            const totalAmount = sub.emi?.totalAmount || sub.amount || 0;
-            const perInstallment = sub.emi?.perInstallmentAmount || 0;
-            const paidAmount = (sub.paid_count || 0) * perInstallment;
-            
-            subscriptionDetails = {
-              type: sub.type,
-              status: sub.status,
-              totalCount: sub.total_count,
-              paidCount: sub.paid_count,
-              remainingCount: Math.max(0, (sub.total_count || 0) - (sub.paid_count || 0)),
-              totalAmount: totalAmount,
-              paidAmount: paidAmount,
-              balanceAmount: Math.max(0, totalAmount - paidAmount),
-              nextPaymentAt: sub.next_payment_at,
-              expiresAt: sub.expiresAt
-            };
-        }
-
-        return {
-          ...course,
-          discountedPrice: getDiscountedPrice(course),
-          isSubscribed,
-          isExpired: sub ? !isActive : false,
-          subscriptionStatus: sub ? (isActive ? "active" : "expired") : "none",
-          subscriptionDetails,
-          modules: modulesWithContent,
-          liveMeetings: securedMeetings
-        };
-    });
-
-    res.json(coursesWithContent);
+    const courses = await Course.find(filter).sort({ createdAt: -1 });
+    res.json(courses);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

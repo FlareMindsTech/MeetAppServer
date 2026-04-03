@@ -14,8 +14,7 @@ export const getProfile = async (req, res) => {
       .populate({
         path: "subscribedCourses.courseId",
         select: "title description category price duration durationInDays thumbnail isLiveCourse isRecurring"
-      })
-      .lean();
+      });
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Filter out subscriptions where the referenced course has been deleted (courseId is null)

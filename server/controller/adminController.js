@@ -376,19 +376,7 @@ const canManageTarget = (requesterRole, targetRole) => {
 
 export const getAllStudents = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const skip = (page - 1) * limit;
-
-    const students = await User.find({ role: "student" })
-      .select("FirstName LastName email phoneNumber photo isActive createdAt") // Projection: only needed fields
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    const totalStudents = await User.countDocuments({ role: "student" });
-    res.set("X-Total-Count", totalStudents);
+    const students = await User.find({ role: "student" }).sort({ createdAt: -1 });
     res.json(students);
   } catch (err) {
     res.status(500).json({ message: err.message });
