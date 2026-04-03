@@ -33,7 +33,9 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+app.use(cors({
+  exposedHeaders: ["X-Total-Count", "X-Total-Pages"]
+}));
 
 // --- CACHED CONNECTION LOGIC ---
 let cached = global.mongoose;
