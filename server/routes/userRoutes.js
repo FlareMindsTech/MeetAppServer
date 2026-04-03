@@ -5,7 +5,7 @@ import checkRoles from "../middleware/rolesMiddleware.js";
 import { upload } from "../config/multer.js";
 
 // Controllers
-import { getProfile, updatePassword, updateProfile, deleteMyAccount, getMyActiveSubscriptions, getMeetings } from "../controller/studentController.js";
+import { getProfile, updatePassword, updateProfile, deleteMyAccount } from "../controller/studentController.js";
 import { register } from "../controller/authController.js";
 import { deactivateStudent, getAllStudents, getStudentDetail, updateStudentDetail, deleteStudent } from "../controller/adminController.js";
 import { markLessonComplete, getStudentProgress, getModuleProgress } from "../controller/progressController.js";
@@ -18,10 +18,6 @@ router.get("/user/profile", auth, getProfile);
 router.put("/user/profile", auth, upload.single("photo"), updateProfile);
 router.put("/user/profile/password", auth, updatePassword);
 router.delete("/user/delete-account", auth, deleteMyAccount);
-
-// --- STUDENT COURSES ---
-router.get("/student/my-courses", auth, getMyActiveSubscriptions);
-router.get("/student/meetings", auth, getMeetings);
 
 // --- STUDENT PROGRESS ---
 router.get("/progress/courses", auth, getStudentProgress);

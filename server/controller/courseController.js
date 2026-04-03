@@ -30,13 +30,23 @@ export const getPublicCourses = async (req, res) => {
     const userRole = (req.user?.role || "").toLowerCase().trim();
     const isStaff = userRole === "admin" || userRole === "owner";
 
-    if (type === "live") filter.isLiveCourse = true;
+    // Support "My Courses" view via the same API
+    if (type === "my" && studentId) {
+        const student = await User.findById(studentId).lean();
+        const enrolledCourseIds = (student?.subscribedCourses || []).map(s => s.courseId);
+        filter._id = { $in: enrolledCourseIds };
+    } else if (type === "live") {
+        filter.isLiveCourse = true;
+    } else if (type === "recorded") {
+        filter.isLiveCourse = false;
+    }
 
     // Cache static data for 60 seconds
     res.set("Cache-Control", "public, max-age=60");
 
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    // Don't paginate if show all (my courses) or as requested
+    const limit = (type === "my") ? 1000 : (parseInt(req.query.limit) || 20);
     const skip = (page - 1) * limit;
 
     // 1. Parallelize initial queries (User, Courses, Total Count)
@@ -99,9 +109,10 @@ export const getPublicCourses = async (req, res) => {
     const coursesWithContent = courses.map((course) => {
         const courseIdStr = course._id.toString();
         const sub = subMapByCourse.get(courseIdStr);
-        const isSubscribed = sub && sub.expiresAt > now;
+        const isActive = sub && new Date(sub.expiresAt) > now;
+        const isSubscribed = isStaff || isActive;
 
-        // Populate Modules
+        // 1. Map Modules
         const courseModules = modulesByCourse.get(courseIdStr) || [];
         const modulesWithContent = courseModules.map(module => {
             const modSubMods = subModsByMod.get(module._id.toString()) || [];
@@ -119,16 +130,16 @@ export const getPublicCourses = async (req, res) => {
             return { ...module, subModules: subModulesWithLessons };
         });
 
-        // Populate Meetings
+        // 2. Map Meetings
         const courseMeetings = meetingsByCourse.get(courseIdStr) || [];
         const securedMeetings = courseMeetings.map(m => {
             if (isStaff || isSubscribed) return m;
             return { ...m, meetingUrl: null };
         });
 
-        // Calc Detailed Subscription Info
+        // 3. Calc Subscription Details
         let subscriptionDetails = null;
-        if (sub && isSubscribed) {
+        if (sub) {
             const totalAmount = sub.emi?.totalAmount || sub.amount || 0;
             const perInstallment = sub.emi?.perInstallmentAmount || 0;
             const paidAmount = (sub.paid_count || 0) * perInstallment;
@@ -151,6 +162,8 @@ export const getPublicCourses = async (req, res) => {
           ...course,
           discountedPrice: getDiscountedPrice(course),
           isSubscribed,
+          isExpired: sub ? !isActive : false,
+          subscriptionStatus: sub ? (isActive ? "active" : "expired") : "none",
           subscriptionDetails,
           modules: modulesWithContent,
           liveMeetings: securedMeetings
