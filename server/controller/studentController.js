@@ -138,17 +138,20 @@ export const getMyActiveSubscriptions = async (req, res) => {
     }
 
     const now = new Date();
-    // Filter to show only active subscriptions
-    const activeSubscriptions = user.subscribedCourses.filter(
-      (sub) => sub.courseId && new Date(sub.expiresAt) > now
-    );
+    // Show all subscriptions (Not just active ones)
+    const allSubscriptions = (user.subscribedCourses || []).filter(sub => sub.courseId);
 
-    // Format the response to return course details directly
-    const formattedResponse = activeSubscriptions.map(sub => ({
-        ...sub.courseId.toObject(),
-        expiresAt: sub.expiresAt,
-        subscribedAt: sub.subscribedAt
-    }));
+    // Format the response to return course details with an 'expired' or 'active' flag
+    const formattedResponse = allSubscriptions.map(sub => {
+        const isActive = new Date(sub.expiresAt) > now;
+        return {
+            ...(sub.courseId._doc || sub.courseId), // handle both lean and regular populate
+            expiresAt: sub.expiresAt,
+            subscribedAt: sub.subscribedAt,
+            status: isActive ? "active" : "expired",
+            isExpired: !isActive
+        };
+    });
 
     res.json(formattedResponse);
   } catch (err) {
