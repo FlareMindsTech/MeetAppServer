@@ -31,22 +31,21 @@ export const getPublicCourses = async (req, res) => {
     const isStaff = userRole === "admin" || userRole === "owner";
 
     // Support "My Courses" view via the same API
-    if (type === "my" && studentId) {
+    if ((type === "my" || type === "purchased") && studentId) {
         const student = await User.findById(studentId).lean();
-        const enrolledCourseIds = (student?.subscribedCourses || []).map(s => s.courseId);
+        const enrolledCourseIds = (student?.subscribedCourses || []).filter(s => s.courseId).map(s => s.courseId);
         filter._id = { $in: enrolledCourseIds };
-    } else if (type === "live") {
-        filter.isLiveCourse = true;
-    } else if (type === "recorded") {
-        filter.isLiveCourse = false;
     }
+
+    if (type === "live") filter.isLiveCourse = true;
+    if (type === "recorded") filter.isLiveCourse = false;
 
     // Cache static data for 60 seconds
     res.set("Cache-Control", "public, max-age=60");
 
     const page = parseInt(req.query.page) || 1;
-    // Don't paginate if show all (my courses) or as requested
-    const limit = (type === "my") ? 1000 : (parseInt(req.query.limit) || 20);
+    // Don't paginate if show all (my courses) or as requested by the UI
+    const limit = (type === "my" || type === "purchased") ? 2000 : (parseInt(req.query.limit) || 50);
     const skip = (page - 1) * limit;
 
     // 1. Parallelize initial queries (User, Courses, Total Count)
