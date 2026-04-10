@@ -76,7 +76,10 @@ export const register = async (req, res) => {
       token, 
       user: {
         _id: newUser._id,
+        FirstName: newUser.FirstName,
+        LastName: newUser.LastName,
         email: newUser.email,
+        phoneNumber: newUser.phoneNumber,
         role: newUser.role
       }
     });
@@ -139,6 +142,7 @@ export const login = async (req, res) => {
         FirstName: user.FirstName,
         LastName: user.LastName,
         email: user.email,
+        phoneNumber: user.phoneNumber,
         role: user.role,
       },
     });
@@ -159,8 +163,13 @@ export const requestOTP = async (req, res) => {
       return res.status(400).json({ message: "Phone number is required" });
     }
 
-    // Generate 4-digit OTP (as seen in screenshot)
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    console.log(`[OTP Request] Phone: ${phoneNumber}, Normalized: ${normalizedPhone}`);
+    console.log(`[OTP Request] SMS_DEV_MODE: ${process.env.SMS_DEV_MODE}`);
+
+    // Generate 4-digit OTP (Predictable 1234 in Dev Mode)
+    const otp = process.env.SMS_DEV_MODE === "true" 
+      ? "1234" 
+      : Math.floor(1000 + Math.random() * 9000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Find or Create User
@@ -178,8 +187,10 @@ export const requestOTP = async (req, res) => {
     user.otpExpires = otpExpires;
     await user.save();
 
+    console.log(`[OTP Request] Saved OTP ${otp} for user ${user._id}`);
+
     // Send OTP via SMS
-    await sendSMSOTP(phoneNumber, otp);
+    await sendSMSOTP(normalizedPhone, otp);
 
     res.json({ message: "OTP sent successfully" });
   } catch (err) {
@@ -234,6 +245,7 @@ export const verifyOTP = async (req, res) => {
         _id: user._id,
         FirstName: user.FirstName,
         LastName: user.LastName,
+        email: user.email,
         phoneNumber: user.phoneNumber,
         role: user.role,
       },

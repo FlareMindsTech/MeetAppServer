@@ -45,6 +45,7 @@ export const updateProfile = async (req, res) => {
     // 1. Update Text Fields (if provided)
     if (body.FirstName) user.FirstName = body.FirstName;
     if (body.LastName) user.LastName = body.LastName;
+    if (body.email) user.email = body.email;
     if (body.phoneNumber) user.phoneNumber = body.phoneNumber;
     if (body.gender) user.gender = body.gender;
     if (body.city) user.city = body.city;
