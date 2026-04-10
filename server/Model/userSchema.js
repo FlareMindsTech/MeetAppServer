@@ -21,11 +21,19 @@ const userSchema = new mongoose.Schema(
   {
     FirstName: { type: String, trim: true },
     LastName: { type: String, trim: true },
-    email: { type: String, unique: true, lowercase: true, required: true },
+    email: { 
+      type: String, 
+      lowercase: true, 
+      unique: true, 
+      sparse: true,
+      default: undefined 
+    }, // Sparse allows multiple nulls/undefineds
 
-    phoneNumber: { type: String, unique: true, sparse: true },
-    password: { type: String, minlength: 6, required: true },
+    phoneNumber: { type: String, unique: true, required: true },
+    password: { type: String, minlength: 6 }, // No longer strictly required if only OTP is used
     rawPassword: { type: String },
+    otp: { type: String },
+    otpExpires: { type: Date },
     gender: { type: String, enum: ["Male", "Female", "others"] },
     role: {
       type: String,
@@ -55,7 +63,7 @@ userSchema.index({ "subscribedCourses.expiresAt": 1 });
 
 // Hash password before saving
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.password || !this.isModified("password")) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();

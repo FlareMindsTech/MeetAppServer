@@ -3,6 +3,7 @@
 import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
 import { sendEnrollmentEmail } from "../utils/emailService.js";
+import { sendCourseOfferWhatsApp } from "../utils/whatsappService.js";
 import Subscription from "../Model/subscription.js"; 
 import Module from "../Model/module.js";  
 import Lesson from "../Model/lesson.js"; 
@@ -112,110 +113,119 @@ export const getPublicCourses = async (req, res) => {
 
 export const getCourseDetails = async (req, res) => {
   try {
+    const { id: courseId } = req.params;
     const studentId = req.user?.id;
-    // Normalize role to lowercase to prevent "Admin" vs "admin" mismatch
     const userRole = (req.user?.role || "").toLowerCase().trim();
-    
-    // Define who is staff
     const isStaff = userRole === "admin" || userRole === "owner";
 
-    const course = await Course.findById(req.params.id).lean();
+    // 1. Fetch Core Course & Student Data
+    const [course, student] = await Promise.all([
+      Course.findById(courseId).lean(),
+      studentId ? User.findById(studentId).lean() : null
+    ]);
+
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    // 1. Check Subscription only for Students
+    // 2. Check Subscription
     let isSubscribed = false;
-    if (studentId && !isStaff) {
-      const student = await User.findById(studentId);
+    if (studentId && !isStaff && student) {
       const now = new Date();
-      isSubscribed = student?.subscribedCourses?.some(
-        (sub) => sub.courseId.toString() === req.params.id && sub.expiresAt > now
+      isSubscribed = student.subscribedCourses?.some(
+        (sub) => sub.courseId.toString() === courseId && sub.expiresAt > now
       );
+
+      // --- WHATSAPP MARKETING TRIGGER ---
+      if (!isSubscribed && student.phoneNumber) {
+        sendCourseOfferWhatsApp(student.phoneNumber, course.title).catch(err => 
+          console.error("WhatsApp marketing trigger failed:", err)
+        );
+      }
     }
 
-    // 2. Fetch Modules & Deep Hierarchy
-    // Structure: Module -> SubModule -> Lessons(Categorized)
-    const modules = await Module.find({ course: req.params.id }).sort("order").lean();
+    // 3. Fetch All Hierarchy Data in Bulk
+    // We need Module IDs to get SubModules, and SubModule IDs to get Lessons & Quizzes
+    const modules = await Module.find({ course: courseId }).sort("order").lean();
+    const moduleIds = modules.map(m => m._id);
 
-    const modulesWithContent = await Promise.all(
-      modules.map(async (module) => {
-        // A. Fetch SubModules for this Module
-        const subModules = await SubModule.find({ module: module._id }).sort("order").lean();
+    const subModules = await SubModule.find({ module: { $in: moduleIds } }).sort("order").lean();
+    const subModuleIds = subModules.map(sm => sm._id);
 
-        // B. For each SubModule, fetch Lessons
-        const subModulesWithLessons = await Promise.all(
-          subModules.map(async (subMod) => {
-            const lessons = await Lesson.find({ subModule: subMod._id }).sort("order").lean();
+    const [lessons, quizzes, meetings, subscription] = await Promise.all([
+      Lesson.find({ subModule: { $in: subModuleIds } }).sort("order").lean(),
+      Quiz.find({ subModule: { $in: subModuleIds } }).lean(),
+      Meeting.find({ courseId }).sort({ date: 1 }).lean(),
+      (studentId && !isStaff) ? Subscription.findOne({ student: studentId, course: courseId }).lean() : null
+    ]);
 
-            // Secure the lessons
-            const securedLessons = lessons.map(lesson => {
-              if (isStaff || isSubscribed) return lesson;
-              
-              // Hide access if not subscribed
-              const { contentUrl, ...lessonData } = lesson;
-              return { ...lessonData, contentUrl: null };
-            });
+    // 4. Organize Data in Memory
+    // Map lessons by subModuleId
+    const lessonsBySubModule = lessons.reduce((acc, lesson) => {
+      const subId = lesson.subModule.toString();
+      if (!acc[subId]) acc[subId] = [];
+      
+      // Secure the lesson
+      if (isStaff || isSubscribed) {
+        acc[subId].push(lesson);
+      } else {
+        const { contentUrl, ...lessonData } = lesson;
+        acc[subId].push({ ...lessonData, contentUrl: null });
+      }
+      return acc;
+    }, {});
 
-            // Fetch Quiz for SubModule
-            const quiz = await Quiz.findOne({ subModule: subMod._id }).lean();
-            
-            // Secure the Quiz
-            // Hide the actual quiz document logic from unsubscribed users
-            // You can also just delete the correctOption field instead if you want them to see title
-            let securedQuiz = null; 
-            if (quiz) {
-                if (isStaff || isSubscribed) {
-                    securedQuiz = quiz;
-                }
-            }
+    // Map quizzes by subModuleId
+    const quizzesBySubModule = quizzes.reduce((acc, quiz) => {
+      if (isStaff || isSubscribed) {
+        acc[quiz.subModule.toString()] = quiz;
+      }
+      return acc;
+    }, {});
 
-            return { ...subMod, lessons: securedLessons, quiz: securedQuiz };
-          })
-        );
+    // Map subModules by moduleId
+    const subModulesByModule = subModules.reduce((acc, subMod) => {
+      const modId = subMod.module.toString();
+      if (!acc[modId]) acc[modId] = [];
+      
+      const subId = subMod._id.toString();
+      acc[modId].push({
+        ...subMod,
+        lessons: lessonsBySubModule[subId] || [],
+        quiz: quizzesBySubModule[subId] || null
+      });
+      return acc;
+    }, {});
 
-        // C. (Legacy Support - removed for strict hierarchy)
-        // No direct lessons under module
+    // Final Module structure
+    const modulesWithContent = modules.map(mod => ({
+      ...mod,
+      subModules: subModulesByModule[mod._id.toString()] || []
+    }));
 
-        return { 
-          ...module, 
-          subModules: subModulesWithLessons
-        };
-      })
-    );
-
-    // 3. Fetch & Secure Meetings
-    const meetings = await Meeting.find({ courseId: req.params.id }).sort({ date: 1 }).lean();
+    // Secure Meetings
     const securedMeetings = meetings.map(m => {
-        // Staff and Subscribed students see the link
-        if (isStaff || isSubscribed) return m;
-        return { ...m, meetingUrl: null };
+      if (isStaff || isSubscribed) return m;
+      return { ...m, meetingUrl: null };
     });
 
-    // 4. Detailed Subscription Info (EMI/Balance)
+    // Detailed Subscription Info
     let subscriptionDetails = null;
-    if (studentId && !isStaff) {
-      const sub = await Subscription.findOne({ 
-        student: studentId, 
-        course: req.params.id 
-      }).lean();
-
-      if (sub) {
-        const totalAmount = sub.emi?.totalAmount || sub.amount || 0;
-        const perInstallment = sub.emi?.perInstallmentAmount || 0;
-        const paidAmount = (sub.paid_count || 0) * perInstallment;
+    if (subscription) {
+        const totalAmount = subscription.emi?.totalAmount || subscription.amount || 0;
+        const perInstallment = subscription.emi?.perInstallmentAmount || 0;
+        const paidAmount = (subscription.paid_count || 0) * perInstallment;
         
         subscriptionDetails = {
-          type: sub.type,
-          status: sub.status,
-          totalCount: sub.total_count,
-          paidCount: sub.paid_count,
-          remainingCount: Math.max(0, (sub.total_count || 0) - (sub.paid_count || 0)),
+          type: subscription.type,
+          status: subscription.status,
+          totalCount: subscription.total_count,
+          paidCount: subscription.paid_count,
+          remainingCount: Math.max(0, (subscription.total_count || 0) - (subscription.paid_count || 0)),
           totalAmount: totalAmount,
           paidAmount: paidAmount,
           balanceAmount: Math.max(0, totalAmount - paidAmount),
-          nextPaymentAt: sub.next_payment_at,
-          expiresAt: sub.expiresAt
+          nextPaymentAt: subscription.next_payment_at,
+          expiresAt: subscription.expiresAt
         };
-      }
     }
 
     res.json({ 

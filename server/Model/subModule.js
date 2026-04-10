@@ -6,6 +6,7 @@ const subModuleSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Module",
       required: true,
+      index: true,
     },
     title: { type: String, required: true },
     thumbnail: { type: String }, // Optional thumbnail for the sub-topic

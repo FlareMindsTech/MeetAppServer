@@ -3,16 +3,24 @@ import jwt from "jsonwebtoken";
 import User from "../Model/userSchema.js";
 import crypto from "crypto";
 import { sendPasswordResetEmail } from "../utils/emailService.js";
+import { sendSMSOTP } from "../utils/otpService.js";
+
+const normalizePhone = (phone) => {
+  if (!phone) return phone;
+  const cleaned = phone.toString().replace(/\D/g, "");
+  // If 10 digits, prepend 91 (India)
+  return cleaned.length === 10 ? "91" + cleaned : cleaned;
+};
 
 // @desc    Register a new user (Student, Admin, etc.)
 // @route   POST /api/auth/register
 export const register = async (req, res) => {
   try {
-   
     const { FirstName, LastName, phoneNumber, email, password, role, adminSecret } = req.body;
+    const normalizedPhone = normalizePhone(phoneNumber);
 
     const existing = await User.findOne({ 
-      $or: [{ email }, { phoneNumber }] 
+      $or: [{ email }, { phoneNumber: normalizedPhone }] 
     });
     
     if (existing) {
@@ -39,7 +47,7 @@ export const register = async (req, res) => {
     const newUser = new User({
       FirstName,
       LastName,
-      phoneNumber,
+      phoneNumber: normalizedPhone,
       email,
       password,
       role: assignedRole ,
@@ -86,14 +94,14 @@ export const login = async (req, res) => {
     const { email, password, phoneNumber } = req.body;
 
     if ((!email && !phoneNumber) || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email/Phone and password are required" });
+      return res.status(400).json({ message: "Email/Phone and password are required" });
     }
+
+    const normalizedPhone = phoneNumber ? normalizePhone(phoneNumber) : (email && email.match(/^\d{10}$/) ? normalizePhone(email) : null);
 
     // Find user by Email OR Phone
     const user = await User.findOne({
-      $or: [{ email: email }, { phoneNumber: phoneNumber || email }],
+      $or: [{ email: email }, { phoneNumber: normalizedPhone }],
     });
 
     if (!user) {
@@ -136,6 +144,102 @@ export const login = async (req, res) => {
     });
   } catch (err) {
     console.error("Login Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc    Request OTP for Mobile Login
+// @route   POST /api/auth/request-otp
+export const requestOTP = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    const normalizedPhone = normalizePhone(phoneNumber);
+
+    if (!normalizedPhone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+
+    // Generate 4-digit OTP (as seen in screenshot)
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Find or Create User
+    let user = await User.findOne({ phoneNumber: normalizedPhone });
+    if (!user) {
+      // Create new user if doesn't exist (Signup)
+      user = new User({
+        phoneNumber: normalizedPhone,
+        role: "student",
+        isActive: true
+      });
+    }
+
+    user.otp = otp;
+    user.otpExpires = otpExpires;
+    await user.save();
+
+    // Send OTP via SMS
+    await sendSMSOTP(phoneNumber, otp);
+
+    res.json({ message: "OTP sent successfully" });
+  } catch (err) {
+    console.error("Request OTP Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc    Verify OTP and Login
+// @route   POST /api/auth/verify-otp
+export const verifyOTP = async (req, res) => {
+  try {
+    const { phoneNumber, otp } = req.body;
+    const normalizedPhone = normalizePhone(phoneNumber);
+
+    if (!normalizedPhone || !otp) {
+      return res.status(400).json({ message: "Phone number and OTP are required" });
+    }
+
+    const user = await User.findOne({ 
+      phoneNumber: normalizedPhone, 
+      otp, 
+      otpExpires: { $gt: Date.now() } 
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Account deactivated" });
+    }
+
+    // Clear OTP
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    user.lastLogin = new Date();
+
+    const sessionId = crypto.randomBytes(16).toString("hex");
+    user.sessionId = sessionId;
+    await user.save();
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role, email: user.email, sessionId: sessionId },
+      process.env.JWT_SECRET
+    );
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        _id: user._id,
+        FirstName: user.FirstName,
+        LastName: user.LastName,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Verify OTP Error:", err);
     res.status(500).json({ message: err.message });
   }
 };

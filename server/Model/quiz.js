@@ -6,6 +6,7 @@ const quizSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubModule",
       required: true,
+      index: true,
     },
     title: { type: String, required: true },
     questions: [

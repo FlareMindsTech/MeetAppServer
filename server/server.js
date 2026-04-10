@@ -52,8 +52,17 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000, 
     };
 
-    cached.promise = mongoose.connect(process.env.MONGO_URI, opts).then((mongoose) => {
+    cached.promise = mongoose.connect(process.env.MONGO_URI, opts).then(async (mongoose) => {
       console.log("MongoDB Connected");
+      
+      // Temporary: Drop old email index to fix the duplicate null error
+      try {
+        await mongoose.connection.db.collection('users').dropIndex('email_1');
+        console.log("Cleaned up old email index");
+      } catch (e) {
+        // Index might not exist or already be dropped
+      }
+      
       return mongoose;
     });
   }

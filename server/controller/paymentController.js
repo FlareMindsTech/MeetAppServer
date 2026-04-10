@@ -68,10 +68,11 @@ export const initiatePayment = async (req, res) => {
     }
 
     // Determine if Subscription/EMI logic is needed
-    const isSubscription =
-      (type && String(type).toLowerCase() === "subscription") ||
-      (paymentOption && String(paymentOption).toLowerCase() === "emi") ||
+    // 1. If course is set as Recurring, it ALWAYS uses subscription/renewal logic
+    // 2. Otherwise, check if student explicitly chose EMI
+    const isSubscription = 
       course.isRecurring === true || 
+      (paymentOption && String(paymentOption).toLowerCase() === "emi") ||
       !!plan_id;
 
     if (isSubscription) {
@@ -564,7 +565,8 @@ export const createSubscription = async (req, res) => {
     return res.json({ 
         subscriptionId: rzpSubscription.id, 
         keyId: process.env.RAZORPAY_KEY_ID, 
-        localSubscriptionId: localSub._id 
+        localSubscriptionId: localSub._id,
+        paymentMode: isRenewal ? "RENEWAL" : "EMI"
     });
 
   } catch (err) {

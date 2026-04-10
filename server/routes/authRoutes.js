@@ -5,7 +5,7 @@ import checkRoles from "../middleware/rolesMiddleware.js";
 import { upload } from "../config/multer.js";
 
 // Controllers
-import { register, login, resetPassword, requestPasswordReset, logout, getAllAdmins, updateAdmin, deleteAdmin } from "../controller/authController.js";
+import { register, login, resetPassword, requestPasswordReset, logout, getAllAdmins, updateAdmin, deleteAdmin, requestOTP, verifyOTP } from "../controller/authController.js";
 
 // Roles
 const ownerOnly = checkRoles(["owner"]);
@@ -14,6 +14,8 @@ const ownerOnly = checkRoles(["owner"]);
 // --- PUBLIC AUTH ---
 router.post("/auth/register", register);
 router.post("/auth/login", login);
+router.post("/auth/request-otp", requestOTP);
+router.post("/auth/verify-otp", verifyOTP);
 router.post("/auth/logout", logout);
 router.post("/auth/forgot-password", requestPasswordReset);
 router.post("/auth/reset-password/:resetToken", resetPassword);
