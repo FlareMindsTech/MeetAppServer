@@ -61,7 +61,11 @@ export const sendPasswordResetEmail = async (user, resetToken) => {
  * 2. Enrollment Confirmation Email (Free or One-time)
  */
 export const sendEnrollmentEmail = async ({ student, course, expiresAt, isOneTime = false }) => {
-    const expiryDate = expiresAt ? new Date(expiresAt).toLocaleDateString("en-US") : "N/A";
+    let expiryDate = "Lifetime Access";
+    const expDate = expiresAt ? new Date(expiresAt) : null;
+    if (expDate && expDate.getFullYear() < 9990) {
+        expiryDate = expDate.toLocaleDateString("en-US");
+    }
     const subject = isOneTime ? "Payment Successful & Enrollment Confirmed" : "Enrollment Confirmed";
     
     const html = `

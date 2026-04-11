@@ -44,31 +44,28 @@ export const register = async (req, res) => {
        photoUrl = req.file.path;
     }
 
+    const sessionId = !req.user ? crypto.randomBytes(16).toString("hex") : null;
+    
     const newUser = new User({
       FirstName,
       LastName,
       phoneNumber: normalizedPhone,
       email,
       password,
-      role: assignedRole ,
+      role: assignedRole,
       isActive: true,
-      photo: photoUrl
+      photo: photoUrl,
+      sessionId: sessionId
     });
 
     await newUser.save();
 
-    
     let token = null;
-    if (!req.user) {
-        // For fresh registration auto-login, we could also start a session
-        const sessionId = crypto.randomBytes(16).toString("hex");
-        newUser.sessionId = sessionId;
-        await newUser.save(); // Save again with sessionId
-
-        token = jwt.sign(
-            { id: newUser._id, role: newUser.role, email: newUser.email, sessionId: sessionId },
-            process.env.JWT_SECRET
-        );
+    if (sessionId) {
+      token = jwt.sign(
+        { id: newUser._id, role: newUser.role, email: newUser.email, sessionId: sessionId },
+        process.env.JWT_SECRET
+      );
     }
 
     res.status(201).json({
@@ -189,8 +186,19 @@ export const requestOTP = async (req, res) => {
 
     console.log(`[OTP Request] Saved OTP ${otp} for user ${user._id}`);
 
+    // Check if API key is configured (Safety check for Production)
+    if (process.env.SMS_DEV_MODE !== "true" && !process.env.FAST2SMS_API_KEY) {
+        console.error("[OTP Request] CRITICAL: FAST2SMS_API_KEY is missing from environment variables!");
+        return res.status(500).json({ message: "Sms service configuration error. Please contact admin." });
+    }
+
     // Send OTP via SMS
-    await sendSMSOTP(normalizedPhone, otp);
+    try {
+        await sendSMSOTP(normalizedPhone, otp);
+    } catch (smsError) {
+        console.error("[OTP Request] SMS provider error:", smsError.message);
+        return res.status(500).json({ message: smsError.message || "Failed to deliver SMS. Check provider balance." });
+    }
 
     res.json({ message: "OTP sent successfully" });
   } catch (err) {

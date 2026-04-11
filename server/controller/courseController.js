@@ -128,17 +128,24 @@ export const getCourseDetails = async (req, res) => {
 
     // 2. Check Subscription
     let isSubscribed = false;
-    if (studentId && !isStaff && student) {
+    let subscription = null;
+    
+    if (studentId && !isStaff) {
+      // Get the most recent subscription record
+      subscription = await Subscription.findOne({ student: studentId, course: courseId }).sort({ createdAt: -1 }).lean();
+      
       const now = new Date();
-      isSubscribed = student.subscribedCourses?.some(
+      const hasEnrollment = student && student.subscribedCourses?.some(
         (sub) => sub.courseId.toString() === courseId && sub.expiresAt > now
       );
 
-      // --- WHATSAPP MARKETING TRIGGER ---
-      if (!isSubscribed && student.phoneNumber) {
-        sendCourseOfferWhatsApp(student.phoneNumber, course.title).catch(err => 
-          console.error("WhatsApp marketing trigger failed:", err)
-        );
+      // Only subscribed if they have an active enrollment AND no cancelled/pending subscription (unless it's a one-time success)
+      isSubscribed = !!hasEnrollment;
+      
+      if (subscription) {
+        if (subscription.status === 'cancelled') {
+          isSubscribed = false; // Override enrollment if sub was explicitly cancelled
+        }
       }
     }
 
@@ -150,20 +157,16 @@ export const getCourseDetails = async (req, res) => {
     const subModules = await SubModule.find({ module: { $in: moduleIds } }).sort("order").lean();
     const subModuleIds = subModules.map(sm => sm._id);
 
-    const [lessons, quizzes, meetings, subscription] = await Promise.all([
+    const [lessons, quizzes, meetings] = await Promise.all([
       Lesson.find({ subModule: { $in: subModuleIds } }).sort("order").lean(),
       Quiz.find({ subModule: { $in: subModuleIds } }).lean(),
-      Meeting.find({ courseId }).sort({ date: 1 }).lean(),
-      (studentId && !isStaff) ? Subscription.findOne({ student: studentId, course: courseId }).lean() : null
+      Meeting.find({ courseId }).sort({ date: 1 }).lean()
     ]);
 
     // 4. Organize Data in Memory
-    // Map lessons by subModuleId
     const lessonsBySubModule = lessons.reduce((acc, lesson) => {
       const subId = lesson.subModule.toString();
       if (!acc[subId]) acc[subId] = [];
-      
-      // Secure the lesson
       if (isStaff || isSubscribed) {
         acc[subId].push(lesson);
       } else {
@@ -173,19 +176,14 @@ export const getCourseDetails = async (req, res) => {
       return acc;
     }, {});
 
-    // Map quizzes by subModuleId
     const quizzesBySubModule = quizzes.reduce((acc, quiz) => {
-      if (isStaff || isSubscribed) {
-        acc[quiz.subModule.toString()] = quiz;
-      }
+      if (isStaff || isSubscribed) acc[quiz.subModule.toString()] = quiz;
       return acc;
     }, {});
 
-    // Map subModules by moduleId
     const subModulesByModule = subModules.reduce((acc, subMod) => {
       const modId = subMod.module.toString();
       if (!acc[modId]) acc[modId] = [];
-      
       const subId = subMod._id.toString();
       acc[modId].push({
         ...subMod,
@@ -195,37 +193,50 @@ export const getCourseDetails = async (req, res) => {
       return acc;
     }, {});
 
-    // Final Module structure
     const modulesWithContent = modules.map(mod => ({
       ...mod,
       subModules: subModulesByModule[mod._id.toString()] || []
     }));
 
-    // Secure Meetings
     const securedMeetings = meetings.map(m => {
       if (isStaff || isSubscribed) return m;
       return { ...m, meetingUrl: null };
     });
 
-    // Detailed Subscription Info
+    // 5. Build Subscription Details
     let subscriptionDetails = null;
-    if (subscription) {
-        const totalAmount = subscription.emi?.totalAmount || subscription.amount || 0;
-        const perInstallment = subscription.emi?.perInstallmentAmount || 0;
-        const paidAmount = (subscription.paid_count || 0) * perInstallment;
-        
+    if (subscription && subscription.type !== "free") {
+      const isEMI = subscription.total_count > 1 && subscription.amount > 0 && subscription.type !== 'renewal';
+      
+      if (isEMI) {
+        const totalAmount = subscription.amount || 0;
+        const paidCount = subscription.paid_count || 0;
+        const totalCount = subscription.total_count || 1;
+        const installmentAmount = totalAmount / totalCount;
+        const paidAmount = paidCount * installmentAmount;
+        const remainingAmount = Math.max(0, totalAmount - paidAmount);
+
         subscriptionDetails = {
-          type: subscription.type,
+          type: "emi",
           status: subscription.status,
-          totalCount: subscription.total_count,
-          paidCount: subscription.paid_count,
-          remainingCount: Math.max(0, (subscription.total_count || 0) - (subscription.paid_count || 0)),
-          totalAmount: totalAmount,
-          paidAmount: paidAmount,
-          balanceAmount: Math.max(0, totalAmount - paidAmount),
+          paidAmount: Math.round(paidAmount),
+          balanceAmount: Math.round(remainingAmount),
+          totalAmount: Math.round(totalAmount),
+          paidCount: paidCount,
+          totalCount: totalCount,
           nextPaymentAt: subscription.next_payment_at,
-          expiresAt: subscription.expiresAt
+          expiresAt: subscription.expiresAt || student?.subscribedCourses?.find(s => s.courseId.toString() === courseId)?.expiresAt
         };
+      } else {
+        // Renewal or Standard
+        subscriptionDetails = {
+          type: "renewal",
+          status: subscription.status,
+          expiresAt: subscription.expiresAt || student?.subscribedCourses?.find(s => s.courseId.toString() === courseId)?.expiresAt,
+          paidCount: subscription.paid_count || 0,
+          totalCount: subscription.total_count || 0,
+        };
+      }
     }
 
     res.json({ 
@@ -281,9 +292,17 @@ export const enrollStudent = async (req, res) => {
     }
 
     // 5. Calculate Expiry
-    const durationInDays = course.durationInDays || 365;
-    const expiresAt = new Date(now);
-    expiresAt.setDate(expiresAt.getDate() + parseInt(durationInDays, 10));
+    // Determine duration and expiry
+    let durationInDays = parseInt(course.durationInDays, 10) || 365;
+    let expiresAt;
+
+    // Fix for the "2300" year issue: If duration is huge (e.g. 100,000 or >= 5000 days), treat as Lifetime
+    if (durationInDays >= 5000) {
+      expiresAt = new Date("9999-12-31T23:59:59.000Z");
+    } else {
+      expiresAt = new Date(now);
+      expiresAt.setDate(expiresAt.getDate() + durationInDays);
+    }
 
     // 6. Save Subscription (to user document)
     if (existingSub) {

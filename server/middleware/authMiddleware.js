@@ -29,15 +29,14 @@ export default async function auth(req, res, next) {
     }
 
     if (decoded.sessionId && user.sessionId && decoded.sessionId !== user.sessionId) {
+       console.warn(`[AUTH] Session mismatch for ${user.email || user._id}. Token: ${decoded.sessionId}, DB: ${user.sessionId}`);
        return res.status(401).json({ error: "Session expired. You logged in on another device." });
     }
-
-    // Determine strictness: if token has no sessionId but user has one, force logout?
-    // backward compatibility: if old token (no sessionId) presented, allow or deny?
-    // Let's enforce: If DB has sessionId, Token MUST match. 
-    // If Token has no sessionId (old token), it will fail equality check if DB has one.
     
-    req.user = decoded; // contains { id, role, email, sessionId }
+    // Fallback: If token has no sessionId but DB does, we allow it for now
+    // until we're sure all users have updated their tokens.
+    
+    req.user = decoded; 
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });

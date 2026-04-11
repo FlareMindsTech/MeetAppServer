@@ -18,9 +18,11 @@ export const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Filter out subscriptions where the referenced course has been deleted (courseId is null)
-    user.subscribedCourses = user.subscribedCourses.filter(
-      (sub) => sub.courseId !== null
-    );
+    if (user.subscribedCourses && user.subscribedCourses.length > 0) {
+      user.subscribedCourses = user.subscribedCourses.filter(
+        (sub) => sub && sub.courseId !== null
+      );
+    }
 
     res.json(user);
   } catch (err) {
