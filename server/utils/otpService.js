@@ -8,12 +8,12 @@ export const sendSMSOTP = async (phoneNumber, otp) => {
   try {
     const message = `Your verification code for logging into the application is ${otp}. Please do not share it with anybody. - Aadvi Fashion Institution`;
     
-    //console.log(`[SMS OTP] Sending to ${phoneNumber}: ${message}`);00
-    // console.log(`[SMS OTP] SMS_DEV_MODE value: "${process.env.SMS_DEV_MODE}"`);              
-    console.log("\n===============================================");
-    console.log(`===   TEST OTP: [ ${otp} ]   ===`);
-    console.log(`===   FOR: ${phoneNumber}    ===`);
-    console.log("===============================================\n");
+    console.log(`[SMS OTP] Sending to ${phoneNumber}: ${message}`);
+    console.log(`[SMS OTP] SMS_DEV_MODE value: "${process.env.SMS_DEV_MODE}"`);              
+    // console.log("\n===============================================");
+    // console.log(`===   TEST OTP: [ ${otp} ]   ===`);
+    // console.log(`===   FOR: ${phoneNumber}    ===`);
+    // console.log("===============================================\n");
     
     // If Dev Mode is ON, don't call the actual API
     if (process.env.SMS_DEV_MODE === "true") {
