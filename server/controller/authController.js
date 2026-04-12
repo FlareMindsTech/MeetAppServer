@@ -77,7 +77,8 @@ export const register = async (req, res) => {
         LastName: newUser.LastName,
         email: newUser.email,
         phoneNumber: newUser.phoneNumber,
-        role: newUser.role
+        role: newUser.role,
+        photo: newUser.photo
       }
     });
 
@@ -141,6 +142,7 @@ export const login = async (req, res) => {
         email: user.email,
         phoneNumber: user.phoneNumber,
         role: user.role,
+        photo: user.photo,
       },
     });
   } catch (err) {
@@ -256,6 +258,7 @@ export const verifyOTP = async (req, res) => {
         email: user.email,
         phoneNumber: user.phoneNumber,
         role: user.role,
+        photo: user.photo,
       },
     });
   } catch (err) {
