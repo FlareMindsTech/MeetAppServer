@@ -21,17 +21,17 @@ export const sendSMSOTP = async (phoneNumber, otp) => {
         return { success: true, message: "OTP logged to console (Dev Mode)" };
     }
 
-    // Fast2SMS API Integration - Using 'q' (Quick SMS) route to bypass verification
+    // Fast2SMS API Integration - Using 'otp' route (Costs ~₹0.25 vs ₹5.00 for Quick Route)
     // Fast2SMS expects a 10-digit mobile number, so we strip any prefixes if present (like 91)
     const tenDigitNumber = phoneNumber.toString().slice(-10);
     
-    console.log(`[SMS OTP] Calling Fast2SMS API for number: ${tenDigitNumber}`);
+    console.log(`[SMS OTP] Calling Fast2SMS API (OTP Route) for number: ${tenDigitNumber}`);
     
     const response = await axios.get("https://www.fast2sms.com/dev/bulkV2", {
       params: {
         authorization: process.env.FAST2SMS_API_KEY,
-        route: "q",
-        message: message, 
+        route: "otp",
+        variables_values: otp, 
         numbers: tenDigitNumber,
       },
     });
@@ -43,7 +43,7 @@ export const sendSMSOTP = async (phoneNumber, otp) => {
       throw new Error(response.data.message || "Fast2SMS Error");
     }
 
-    return { success: true, message: "OTP sent successfully via Fast2SMS (Quick Route)" };
+    return { success: true, message: "OTP sent successfully via Fast2SMS (OTP Route - Low Cost)" };
   } catch (error) {
     console.error("Error sending SMS OTP:", error);
     throw new Error("Failed to send OTP. Please try again later.");
