@@ -18,6 +18,7 @@ import {
   createLesson, updateLesson, deleteLesson, uploadResource,
   addSubModule, updateSubModule, deleteSubModule // New imports
 } from "../controller/adminController.js";
+import { getCloudinarySignature } from "../controller/cloudinaryController.js";
 
 // Roles
 const adminOnly = checkRoles(["owner", "admin"]);
@@ -33,6 +34,7 @@ router.get("/lessons/:lessonId", auth, getLessonDetails);
 router.get("/lessons/:lessonId/download", auth, downloadLessonResource);
 
 // --- ADMIN COURSE MANAGEMENT ---
+router.get("/admin/cloudinary-signature", auth, adminOnly, getCloudinarySignature);
 router.get("/admin/courses", auth, adminOnly, getAllCourses);
 router.post("/admin/courses/create", auth, adminOnly, upload.single("thumbnail"), createCourse);
 router.put("/admin/courses/:id/update", auth, adminOnly, upload.single("thumbnail"), updateCourse);

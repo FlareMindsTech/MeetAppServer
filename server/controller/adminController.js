@@ -237,54 +237,57 @@ export const deleteSubModule = async (req, res) => {
 // @desc    Create a new Lesson (Video/PDF)
 export const createLesson = async (req, res) => {
   try {
-    const { subModuleId, title, isFree, duration, order, category } = req.body;
+    const { subModuleId, title, isFree, duration, order, category, contentUrl: bodyContentUrl } = req.body;
     const file = req.file;
 
-    if (!subModuleId || !title || !file) {
+    if (!subModuleId || !title || (!file && !bodyContentUrl)) {
       return res
         .status(400)
-        .json({ message: "SubModule ID, Title, and File are required" });
+        .json({ message: "SubModule ID, Title, and File/URL are required" });
     }
 
     let type = "text";
-    const mime = file.mimetype.toLowerCase();
-    const filename = file.originalname.toLowerCase();
+    let finalContentUrl = "";
     let autoDuration = 0;
+    
+    // Determine source and type
+    const sourcePath = file ? file.originalname.toLowerCase() : (bodyContentUrl || "").toLowerCase();
+    const mime = file ? file.mimetype.toLowerCase() : "";
 
     if (
       mime.startsWith("video/") ||
-      filename.endsWith(".mp4") ||
-      filename.endsWith(".mkv") ||
-      filename.endsWith(".mov")
+      sourcePath.endsWith(".mp4") ||
+      sourcePath.endsWith(".mkv") ||
+      sourcePath.endsWith(".mov")
     ) {
       type = "video";
-      // Auto-fetch duration from Cloudinary if not provided
-      if (!duration || duration == 0) {
+      
+      // Auto-fetch duration if it's a new file and duration not provided
+      if (file && (!duration || duration == 0)) {
         try {
-          // req.file.filename is usually the public_id in multer-storage-cloudinary
           const videoDetails = await cloudinary.api.resource(file.filename, { 
             resource_type: "video",
             image_metadata: true 
           });
           if (videoDetails && videoDetails.duration) {
-            autoDuration = Math.floor(videoDetails.duration); // Duration in seconds (floored)
+            autoDuration = Math.floor(videoDetails.duration);
           }
         } catch (cloudErr) {
           console.error("Failed to fetch video duration from Cloudinary:", cloudErr.message);
         }
       }
-    } else if (mime.includes("pdf") || filename.endsWith(".pdf")) {
+    } else if (mime.includes("pdf") || sourcePath.endsWith(".pdf")) {
       type = "pdf";
     }
 
-    const contentUrl = file.path;
+    finalContentUrl = file ? file.path : bodyContentUrl;
 
     const newLesson = await Lesson.create({
-      subModule: subModuleId, // strict hierarchy
+      subModule: subModuleId, 
       title,
       type,
       category: category || "Other",
-      contentUrl: contentUrl,
+      contentUrl: finalContentUrl,
       isFree: isFree === "true" || isFree === true,
       duration: Number(duration) || autoDuration || 0,
       order: Number(order) || 0,
@@ -301,7 +304,7 @@ export const createLesson = async (req, res) => {
 export const updateLesson = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, isFree, order, category, subModuleId } = req.body;
+    const { title, isFree, order, category, subModuleId, contentUrl: bodyContentUrl } = req.body;
 
     const lesson = await Lesson.findById(id);
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
@@ -314,34 +317,36 @@ export const updateLesson = async (req, res) => {
       lesson.isFree = isFree === "true" || isFree === true;
     if (order !== undefined) lesson.order = order;
 
-    if (req.file) {
+    if (req.file || bodyContentUrl) {
       let type = "text";
-      const mime = req.file.mimetype.toLowerCase();
-      const filename = req.file.originalname.toLowerCase();
+      const sourceFile = req.file ? req.file.originalname.toLowerCase() : (bodyContentUrl || "").toLowerCase();
+      const mime = req.file ? req.file.mimetype.toLowerCase() : "";
 
       if (
         mime.startsWith("video/") ||
-        filename.endsWith(".mp4") ||
-        filename.endsWith(".mkv")
+        sourceFile.endsWith(".mp4") ||
+        sourceFile.endsWith(".mkv") ||
+        sourceFile.endsWith(".mov")
       ) {
         type = "video";
-        // Auto-fetch duration if updating the video file
-        try {
-            const videoDetails = await cloudinary.api.resource(req.file.filename, { 
-            resource_type: "video",
-            image_metadata: true 
-            });
-            if (videoDetails && videoDetails.duration) {
-            lesson.duration = videoDetails.duration;
-            }
-        } catch (cloudErr) {
-            console.error("Failed to fetch video duration on update:", cloudErr.message);
+        if (req.file) {
+          try {
+              const videoDetails = await cloudinary.api.resource(req.file.filename, { 
+              resource_type: "video",
+              image_metadata: true 
+              });
+              if (videoDetails && videoDetails.duration) {
+              lesson.duration = videoDetails.duration;
+              }
+          } catch (cloudErr) {
+              console.error("Failed to fetch video duration on update:", cloudErr.message);
+          }
         }
-      } else if (mime.includes("pdf") || filename.endsWith(".pdf")) {
+      } else if (mime.includes("pdf") || sourceFile.endsWith(".pdf")) {
         type = "pdf";
       }
 
-      lesson.contentUrl = req.file.path;
+      lesson.contentUrl = req.file ? req.file.path : bodyContentUrl;
       lesson.type = type;
     }
 
