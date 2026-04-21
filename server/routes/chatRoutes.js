@@ -9,7 +9,8 @@ import {
   sendMessage,
   getMessages,
   markAsRead,
-  manageParticipants
+  manageParticipants,
+  deleteConversation
 } from "../controller/chatController.js";
 
 const adminOrInstructor = checkRoles(["owner", "admin", "instructor"]);
@@ -19,6 +20,7 @@ router.use(auth);
 router.post("/conversation/single", getOrCreateSingleChat);
 router.post("/conversation/group", adminOrInstructor, createGroupChat);
 router.get("/conversations", getConversations);
+router.delete("/conversations/:id", adminOrInstructor, deleteConversation);
 router.post("/conversation/:id/manage-user", adminOrInstructor, manageParticipants);
 
 router.post("/message", sendMessage);

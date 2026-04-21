@@ -8,7 +8,7 @@ import { uploadContent } from "../config/multerContent.js";
 // Controllers
 import { 
   getPublicCourses, getCourseDetails, enrollStudent, 
-  getAllCourses, createCourse, updateCourse, deleteCourse, getCoursePurchasedStudents, getCourseModules 
+  getAllCourses, createCourse, updateCourse, deleteCourse, getCoursePurchasedStudents, getCourseModules, manualEnrollStudent 
 } from "../controller/courseController.js";
 import { 
   getSubModuleLessons, getLessonDetails, downloadLessonResource 
@@ -40,6 +40,7 @@ router.post("/admin/courses/create", auth, adminOnly, upload.single("thumbnail")
 router.put("/admin/courses/:id/update", auth, adminOnly, upload.single("thumbnail"), updateCourse);
 router.delete("/admin/courses/:id/delete", auth, adminOnly, deleteCourse);
 router.get("/admin/courses/:courseId/students", auth, adminOnly, getCoursePurchasedStudents);
+router.post("/admin/manual-enroll", auth, adminOnly, manualEnrollStudent);
 
 // --- ADMIN MODULE MANAGEMENT (Topics) ---
 router.post("/admin/courses/:id/modules", auth, adminOnly, addModule);

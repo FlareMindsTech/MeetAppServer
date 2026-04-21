@@ -1342,29 +1342,29 @@ export const getStudentPaymentHistory = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Fetch Free Subscriptions to include in "My Courses"
-    const freeSubscriptions = await Subscription.find({ 
+    // Fetch Free & Offline Subscriptions to include in "My Courses"
+    const manualSubscriptions = await Subscription.find({ 
       student: objectId, 
-      type: "free", 
+      type: { $in: ["free", "offline_payment"] }, 
       status: "active" 
     })
       .populate("course", "title thumbnail price description")
       .sort({ createdAt: -1 })
       .lean();
 
-    // Transform free subscriptions into payment-like objects
-    const freeHistory = freeSubscriptions.map(sub => ({
+    // Transform manual subscriptions into payment-like objects
+    const manualHistory = manualSubscriptions.map(sub => ({
       _id: sub._id,
       course: sub.course,
-      amount: 0,
+      amount: sub.amount || 0,
       currency: sub.currency || "INR",
       createdAt: sub.createdAt,
-      status: "active", // App expects 'success' or 'active'
-      type: "free"
+      status: sub.status, // "active"
+      type: sub.type // "free" or "offline_payment"
     }));
 
     // Merge and sort
-    const allHistoryRaw = [...payments, ...freeHistory].sort((a, b) => 
+    const allHistoryRaw = [...payments, ...manualHistory].sort((a, b) => 
       new Date(b.createdAt) - new Date(a.createdAt)
     );
 

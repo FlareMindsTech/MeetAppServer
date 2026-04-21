@@ -679,3 +679,94 @@ export const getCoursePurchasedStudents = async (req, res) => {
       return res.status(500).json({ message: err.message });
     }
 };
+
+// @desc    Manually enroll a student (Admin only - for offline payments)
+// @route   POST /api/admin/manual-enroll
+export const manualEnrollStudent = async (req, res) => {
+  try {
+    const { student_id, course_id } = req.body;
+
+    if (!student_id || !course_id) {
+      return res.status(400).json({ message: "Student ID and Course ID are required" });
+    }
+
+    // 1. Check if Course Exists
+    const course = await Course.findById(course_id);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    // 2. Find Student
+    const student = await User.findById(student_id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    // 3. Check if already enrolled in active course
+    const existingSub = student.subscribedCourses.find(
+      (sub) => sub.courseId.toString() === course_id
+    );
+
+    const now = new Date();
+
+    // 4. Calculate Expiry
+    let durationInDays = parseInt(course.durationInDays, 10) || 365;
+    let expiresAt;
+
+    if (durationInDays >= 5000) {
+      expiresAt = new Date("9999-12-31T23:59:59.000Z");
+    } else {
+      expiresAt = new Date(now);
+      expiresAt.setDate(expiresAt.getDate() + durationInDays);
+    }
+
+    // 5. Update user document
+    if (existingSub) {
+      existingSub.expiresAt = expiresAt;
+      existingSub.subscribedAt = now;
+    } else {
+      student.subscribedCourses.push({
+        courseId: course._id,
+        subscribedAt: now,
+        expiresAt: expiresAt,
+      });
+    }
+
+    await student.save();
+
+    // 6. Create Subscription record for audit
+    await Subscription.create({
+      student: student_id,
+      course: course_id,
+      type: "offline_payment",
+      amount: course.price, // Record the actual price for accounting
+      currency: "INR",
+      status: "active",
+      expiresAt,
+      metadata: { 
+        source: "admin-manual-allocation", 
+        adminId: req.user.id,
+        note: "Manual payment at office"
+      },
+    });
+
+    // 7. Send notification emails
+    try {
+      await sendEnrollmentEmail({
+        student,
+        course,
+        expiresAt,
+        isOneTime: true
+      });
+    } catch (emailErr) {
+      console.error("Email sending failed:", emailErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully enrolled ${student.FirstName || 'Student'} in ${course.title}`,
+      expiresAt,
+    });
+  } catch (err) {
+    console.error("Manual enrollment error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};

@@ -41,7 +41,7 @@ const subscriptionSchema = new mongoose.Schema(
     // Enrollment type: free, one-time, subscription(EMI)
     type: {
       type: String,
-      enum: ["free", "one-time", "subscription"],
+      enum: ["free", "one-time", "subscription", "offline_payment"],
       required: true,
     },
 
