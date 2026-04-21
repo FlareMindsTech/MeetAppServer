@@ -1137,9 +1137,35 @@ export const razorpayWebhook = async (req, res) => {
 /* ---------------- Admin / Utilities ---------------- */
 export const getAllSubscriptions = async (req, res) => {
   try {
-    const subscriptions = await Subscription.find({}).populate("student", "FirstName LastName email").populate("course", "title price").sort({ createdAt: -1 });
+    const subscriptions = await Subscription.find({})
+      .populate("student", "FirstName LastName email")
+      .populate("course", "title price")
+      .sort({ createdAt: -1 });
     
-    const formattedSubscriptions = subscriptions.map(sub => {
+    // Filter out subscriptions for deleted courses or courses with no title
+    const validSubscriptions = subscriptions.filter(sub => {
+      return sub.course !== null && 
+             sub.course !== undefined && 
+             sub.course.title !== null &&
+             sub.course.title !== undefined;
+    });
+
+    // --- Deduplication Logic ---
+    // Only show the most recent subscription record for each unique student/course pair
+    const seenPairs = new Set();
+    const uniqueSubscriptions = [];
+
+    for (const sub of validSubscriptions) {
+      if (!sub.student || !sub.course) continue;
+      
+      const pairKey = `${sub.student._id}_${sub.course._id}`;
+      if (!seenPairs.has(pairKey)) {
+        seenPairs.add(pairKey);
+        uniqueSubscriptions.push(sub);
+      }
+    }
+    
+    const formattedSubscriptions = uniqueSubscriptions.map(sub => {
       const obj = sub.toObject();
     
       obj.subscriptionId = obj.razorpay_subscription_id;
@@ -1189,9 +1215,23 @@ export const getAllPayments = async (req, res) => {
       .populate("course", "title")
       .sort({ createdAt: -1 });
 
-    // --- Analytics Logic ---
-    // 1. Total Revenue (Sum of 'amount' in Payment collection)
+    // Filter out payments for deleted courses or courses with no title
+    const validPayments = payments.filter(pay => {
+      return pay.course !== null && 
+             pay.course !== undefined && 
+             pay.course.title !== null &&
+             pay.course.title !== undefined;
+    });
+
+    // --- Analytics Logic (Filtered to existing courses only) ---
+    
+    // Get list of valid course IDs to filter analytics accurately
+    const validCourses = await mongoose.model("Course").find({}, "_id").lean();
+    const validCourseIds = validCourses.map(c => c._id);
+
+    // 1. Total Revenue (Filtered)
     const revenueAgg = await Payment.aggregate([
+      { $match: { course: { $in: validCourseIds } } },
       {
         $group: {
           _id: null,
@@ -1201,15 +1241,18 @@ export const getAllPayments = async (req, res) => {
     ]);
     const totalRevenue = revenueAgg.length > 0 ? revenueAgg[0].totalRevenue : 0;
 
-    // 2. Total Payments (Count of documents in Payment collection)
-    const totalPayments = await Payment.countDocuments();
+    // 2. Total Payments (Filtered)
+    const totalPayments = await Payment.countDocuments({ course: { $in: validCourseIds } });
 
-    // 3. Active Subscriptions
-    const activeSubscriptions = await Subscription.countDocuments({ status: "active" });
+    // 3. Active Subscriptions (Filtered)
+    const activeSubscriptions = await Subscription.countDocuments({ 
+      status: "active",
+      course: { $in: validCourseIds } 
+    });
 
     // --- Combined Response ---
     res.json({
-      payments,
+      payments: validPayments,
       analytics: {
         totalRevenue,
         totalPayments,
@@ -1460,8 +1503,13 @@ export const getStudentPaymentHistory = async (req, res) => {
 
 export const getPaymentAnalytics = async (req, res) => {
   try {
-    // 1. Total Revenue (Sum of 'amount' in Payment collection)
+    // Filter by existing courses only
+    const validCourses = await mongoose.model("Course").find({}, "_id").lean();
+    const validCourseIds = validCourses.map(c => c._id);
+
+    // 1. Total Revenue (Filtered)
     const revenueAgg = await Payment.aggregate([
+      { $match: { course: { $in: validCourseIds } } },
       {
         $group: {
           _id: null,
@@ -1471,11 +1519,14 @@ export const getPaymentAnalytics = async (req, res) => {
     ]);
     const totalRevenue = revenueAgg.length > 0 ? revenueAgg[0].totalRevenue : 0;
 
-    // 2. Total Payments (Count of documents in Payment collection)
-    const totalPayments = await Payment.countDocuments();
+    // 2. Total Payments (Filtered)
+    const totalPayments = await Payment.countDocuments({ course: { $in: validCourseIds } });
 
-    // 3. Active Subscriptions
-    const activeSubscriptions = await Subscription.countDocuments({ status: "active" });
+    // 3. Active Subscriptions (Filtered)
+    const activeSubscriptions = await Subscription.countDocuments({ 
+      status: "active",
+      course: { $in: validCourseIds } 
+    });
 
     res.json({
       totalRevenue,

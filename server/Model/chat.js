@@ -58,6 +58,10 @@ const chatSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    photo: {
+      type: String,
+      default: null,
+    },
     course_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course",

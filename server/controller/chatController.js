@@ -81,6 +81,39 @@ export const manageParticipants = async (req, res) => {
   }
 };
 
+// update group details (title, photo)
+export const updateGroupChat = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, removePhoto } = req.body;
+    let photoUpdate = {};
+
+    if (title !== undefined) photoUpdate.title = title;
+
+    if (removePhoto === "true" || removePhoto === true) {
+      photoUpdate.photo = null;
+    } else if (req.file) {
+      photoUpdate.photo = req.file.path;
+    } else if (req.body.photo !== undefined) {
+      photoUpdate.photo = req.body.photo;
+    }
+
+    const updatedChat = await Chat.findByIdAndUpdate(
+      id,
+      { $set: photoUpdate },
+      { new: true }
+    );
+    
+    if (!updatedChat) {
+      return res.status(404).json({ success: false, message: "Chat not found" });
+    }
+
+    res.status(200).json({ success: true, data: updatedChat });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // send message in a chat
 export const sendMessage = async (req, res) => {
   try {

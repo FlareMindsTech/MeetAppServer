@@ -2,6 +2,7 @@ import express from "express";
 const router = express.Router();
 import auth from "../middleware/authMiddleware.js";
 import checkRoles from "../middleware/rolesMiddleware.js";
+import { upload } from "../config/multer.js";
 import {
   getOrCreateSingleChat,
   createGroupChat,
@@ -10,6 +11,7 @@ import {
   getMessages,
   markAsRead,
   manageParticipants,
+  updateGroupChat,
   deleteConversation
 } from "../controller/chatController.js";
 
@@ -22,6 +24,7 @@ router.post("/conversation/group", adminOrInstructor, createGroupChat);
 router.get("/conversations", getConversations);
 router.delete("/conversations/:id", adminOrInstructor, deleteConversation);
 router.post("/conversation/:id/manage-user", adminOrInstructor, manageParticipants);
+router.put("/conversation/:id/update", adminOrInstructor, upload.single("photo"), updateGroupChat);
 
 router.post("/message", sendMessage);
 router.get("/messages", getMessages);
