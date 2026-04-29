@@ -155,14 +155,14 @@ export const login = async (req, res) => {
 // @route   POST /api/auth/request-otp
 export const requestOTP = async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
+    const { phoneNumber, mode } = req.body; // mode can be 'signin' or 'signup'
     const normalizedPhone = normalizePhone(phoneNumber);
 
     if (!normalizedPhone) {
       return res.status(400).json({ message: "Phone number is required" });
     }
 
-    console.log(`[OTP Request] Phone: ${phoneNumber}, Normalized: ${normalizedPhone}`);
+    console.log(`[OTP Request] Phone: ${phoneNumber}, Normalized: ${normalizedPhone}, Mode: ${mode}`);
     console.log(`[OTP Request] SMS_DEV_MODE: ${process.env.SMS_DEV_MODE}`);
 
     // Generate 4-digit OTP (Predictable 1234 in Dev Mode)
@@ -173,6 +173,20 @@ export const requestOTP = async (req, res) => {
 
     // Find or Create User
     let user = await User.findOne({ phoneNumber: normalizedPhone });
+    
+    const isExistingUser = user && (user.FirstName || user.lastLogin);
+
+    // Check modes
+    if (mode === 'signin') {
+      if (!isExistingUser) {
+        return res.status(404).json({ message: "No account found. Please sign up." });
+      }
+    } else if (mode === 'signup') {
+      if (isExistingUser) {
+        return res.status(400).json({ message: "Account already exists. Please sign in." });
+      }
+    }
+
     if (!user) {
       // Create new user if doesn't exist (Signup)
       user = new User({
