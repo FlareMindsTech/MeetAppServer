@@ -1140,37 +1140,48 @@ export const getAllSubscriptions = async (req, res) => {
     const subscriptions = await Subscription.find({})
       .populate("student", "FirstName LastName email")
       .populate("course", "title price")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }); // Get newest first
     
-    // Filter out subscriptions for deleted courses or courses with no title
+    // 1. Filter out invalid records and ONE-TIME payments
+    // (One-time payments should be in the One-Time tab, not Subscriptions)
     const validSubscriptions = subscriptions.filter(sub => {
       return sub.course !== null && 
-             sub.course !== undefined && 
-             sub.course.title !== null &&
-             sub.course.title !== undefined;
+             sub.student !== null &&
+             sub.type !== "one-time"; // Hide full payments from the Subscriptions tab
     });
 
-    // --- Deduplication Logic ---
-    // Only show the most recent subscription record for each unique student/course pair
-    const seenPairs = new Set();
-    const uniqueSubscriptions = [];
+    // 2. Improved Deduplication Logic (Status-Aware)
+    // We want to show only one card per student/course pair.
+    // If they have multiple attempts, prioritize showing the "Active" one.
+    const pairMap = new Map();
 
     for (const sub of validSubscriptions) {
-      if (!sub.student || !sub.course) continue;
-      
       const pairKey = `${sub.student._id}_${sub.course._id}`;
-      if (!seenPairs.has(pairKey)) {
-        seenPairs.add(pairKey);
-        uniqueSubscriptions.push(sub);
+      const existing = pairMap.get(pairKey);
+
+      if (!existing) {
+        pairMap.set(pairKey, sub);
+      } else {
+        // If we found a newer record, but the existing one is "active", 
+        // keep the active one unless the new one is also active/completed.
+        const currentIsSuccess = ["active", "completed"].includes(sub.status);
+        const existingIsSuccess = ["active", "completed"].includes(existing.status);
+
+        if (currentIsSuccess && !existingIsSuccess) {
+          // Replace pending/failed with active
+          pairMap.set(pairKey, sub);
+        } else if (!existingIsSuccess && sub.createdAt > existing.createdAt) {
+          // If neither is successful, just show the most recent attempt
+          pairMap.set(pairKey, sub);
+        }
       }
     }
     
+    const uniqueSubscriptions = Array.from(pairMap.values());
+    
     const formattedSubscriptions = uniqueSubscriptions.map(sub => {
       const obj = sub.toObject();
-    
       obj.subscriptionId = obj.razorpay_subscription_id;
-      obj.subscription_id = obj.razorpay_subscription_id;
-      obj.subId = obj.razorpay_subscription_id;
       return obj;
     });
 

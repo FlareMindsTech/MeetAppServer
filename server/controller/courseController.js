@@ -41,8 +41,31 @@ export const getPublicCourses = async (req, res) => {
         if (type === "live") filter.isLiveCourse = true;
     }
 
-    const courses = await Course.find(filter).sort({ createdAt: -1 });
-    res.json(courses);
+    const courses = await Course.find(filter).sort({ createdAt: -1 }).lean();
+    
+    // If student is logged in, attach subscription status to each course
+    let student = null;
+    if (studentId) {
+      student = await User.findById(studentId).lean();
+    }
+
+    const coursesWithStatus = courses.map(course => {
+      let isSubscribed = false;
+      if (student && student.subscribedCourses) {
+        const now = new Date();
+        isSubscribed = student.subscribedCourses.some(
+          (sub) => sub.courseId.toString() === course._id.toString() && new Date(sub.expiresAt) > now
+        );
+      }
+
+      return {
+        ...course,
+        discountedPrice: getDiscountedPrice(course),
+        isSubscribed: isSubscribed
+      };
+    });
+
+    res.json(coursesWithStatus);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -130,27 +153,53 @@ export const getCourseDetails = async (req, res) => {
     let isSubscribed = false;
     let subscription = null;
     
-    if (studentId && !isStaff) {
-      // Get the most recent subscription record
-      subscription = await Subscription.findOne({ student: studentId, course: courseId }).sort({ createdAt: -1 }).lean();
-      
+    if (studentId) {
+      // 2. Check Subscription & Role
       const now = new Date();
+      // Add a 24-hour grace period to prevent clock-sync/timezone issues
+      const gracePeriodNow = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+
       const hasEnrollment = student && student.subscribedCourses?.some(
-        (sub) => sub.courseId.toString() === courseId && sub.expiresAt > now
+        (sub) => (String(sub.courseId).trim() === String(courseId).trim()) && 
+                 (new Date(sub.expiresAt) > gracePeriodNow)
       );
 
-      // Only subscribed if they have an active enrollment AND no cancelled/pending subscription (unless it's a one-time success)
-      isSubscribed = !!hasEnrollment;
-      
-      if (subscription) {
-        if (subscription.status === 'cancelled') {
-          isSubscribed = false; // Override enrollment if sub was explicitly cancelled
+      // Staff (Owner/Admin) always have access
+      if (isStaff) {
+        isSubscribed = true;
+      } else {
+        // For students, check active enrollment
+        isSubscribed = !!hasEnrollment;
+        
+        // REDUNDANT CHECK: If profile check fails, check Subscription collection directly
+        if (!isSubscribed) {
+          const directSub = await Subscription.findOne({ 
+            student: studentId, 
+            course: courseId,
+            status: { $in: ['active', 'success', 'completed'] }
+          }).lean();
+          
+          if (directSub) {
+            // Check if direct subscription is still valid
+            if (!directSub.expiresAt || new Date(directSub.expiresAt) > gracePeriodNow) {
+              isSubscribed = true;
+            }
+          }
+        }
+
+        // Final Override: Check for explicit cancellation
+        subscription = await Subscription.findOne({ 
+          student: studentId, 
+          course: courseId 
+        }).sort({ createdAt: -1 }).lean();
+
+        if (subscription && subscription.status === 'cancelled') {
+          isSubscribed = false; 
         }
       }
     }
 
     // 3. Fetch All Hierarchy Data in Bulk
-    // We need Module IDs to get SubModules, and SubModule IDs to get Lessons & Quizzes
     const modules = await Module.find({ course: courseId }).sort("order").lean();
     const moduleIds = modules.map(m => m._id);
 
@@ -167,9 +216,12 @@ export const getCourseDetails = async (req, res) => {
     const lessonsBySubModule = lessons.reduce((acc, lesson) => {
       const subId = lesson.subModule.toString();
       if (!acc[subId]) acc[subId] = [];
-      if (isStaff || isSubscribed) {
+      
+      // Access Logic: Staff, Subscribed Users, or Free Lessons get full content
+      if (isStaff || isSubscribed || lesson.isFree) {
         acc[subId].push(lesson);
       } else {
+        // Locked Content: Remove the contentUrl
         const { contentUrl, ...lessonData } = lesson;
         acc[subId].push({ ...lessonData, contentUrl: null });
       }
