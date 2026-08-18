@@ -9,7 +9,7 @@ import SubModule from "../Model/subModule.js";
 import Lesson from "../Model/lesson.js";
 import Progress from "../Model/progress.js";
 import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
-// import Meeting from "../Model/meet.js";
+
 // --- 1. PUBLIC & STUDENT APIs ---
 
 // @desc    Enroll a student (Manual Subscription / Free Enrollment)
@@ -233,6 +233,26 @@ export const deleteSubModule = async (req, res) => {
 };
 
 // --- 4. LESSON MANAGEMENT ---
+
+// @desc    Generate Presigned URL for Cloudinary Direct Upload
+export const generatePresignedUrl = async (req, res) => {
+  try {
+    const timestamp = Math.round((new Date).getTime() / 1000);
+    const signature = cloudinary.utils.api_sign_request({
+      timestamp: timestamp,
+      folder: 'academy_files'
+    }, process.env.CLOUDINARY_API_SECRET);
+
+    res.json({ 
+      timestamp, 
+      signature, 
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 
 // @desc    Create a new Lesson (Video/PDF)
 export const createLesson = async (req, res) => {

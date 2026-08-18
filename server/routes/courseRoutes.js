@@ -16,9 +16,9 @@ import {
 import { 
   addModule, updateModule, deleteModule, 
   createLesson, updateLesson, deleteLesson, uploadResource,
-  addSubModule, updateSubModule, deleteSubModule // New imports
+  addSubModule, updateSubModule, deleteSubModule, generatePresignedUrl // New imports
 } from "../controller/adminController.js";
-import { getCloudinarySignature } from "../controller/cloudinaryController.js";
+import { uploadMedia } from "../controller/cloudinaryController.js";
 
 // Roles
 const adminOnly = checkRoles(["owner", "admin"]);
@@ -34,7 +34,7 @@ router.get("/lessons/:lessonId", auth, getLessonDetails);
 router.get("/lessons/:lessonId/download", auth, downloadLessonResource);
 
 // --- ADMIN COURSE MANAGEMENT ---
-router.get("/admin/cloudinary-signature", auth, adminOnly, getCloudinarySignature);
+router.post("/admin/upload-media", auth, adminOnly, uploadContent.single("file"), uploadMedia);
 router.get("/admin/courses", auth, adminOnly, getAllCourses);
 router.post("/admin/courses/create", auth, adminOnly, upload.single("thumbnail"), createCourse);
 router.put("/admin/courses/:id/update", auth, adminOnly, upload.single("thumbnail"), updateCourse);
@@ -57,5 +57,6 @@ router.post("/admin/lessons/create", auth, adminOnly, uploadContent.single("cont
 router.put("/admin/lessons/:id/update", auth, adminOnly, uploadContent.single("contentFile"), updateLesson);
 router.delete("/admin/lessons/:id/delete", auth, adminOnly, deleteLesson);
 router.post("/admin/lesson/upload", auth, adminOnly, uploadContent.single("contentFile"), uploadResource);
+router.post("/admin/lesson/presigned-url", auth, adminOnly, generatePresignedUrl);
 
 export default router;

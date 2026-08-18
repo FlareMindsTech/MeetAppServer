@@ -1,4 +1,3 @@
-
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "./cloudinary.js";
@@ -6,7 +5,7 @@ import cloudinary from "./cloudinary.js";
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: "academy_thumbnails", // Folder name in cloudinary
+    folder: "academy_thumbnails",
     allowed_formats: ["jpg", "png", "jpeg", "webp"],
   },
 });

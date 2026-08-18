@@ -5,47 +5,27 @@ import cloudinary from "./cloudinary.js";
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    try {
-      let folderName = "academy_files";
-      let resourceType = "auto"; 
+    let folderName = "academy_files";
+    let resource_type = "auto";
+    const mime = file.mimetype.toLowerCase();
 
-      const mime = file.mimetype.toLowerCase();
-      const filename = file.originalname.toLowerCase();
-
-      if (mime.startsWith("video")) {
-        folderName = "academy_videos";
-        resourceType = "video";
-      } else if (mime.includes("pdf") || filename.endsWith(".pdf")) {
-        folderName = "academy_pdfs";
-        resourceType = "raw"; 
-      }
-
-      const safeName = file.originalname
-        .replace(/\.[^/.]+$/, "")
-        .replace(/[^a-zA-Z0-9-_]/g, "_")
-        .toLowerCase();
-        
-      let public_id = `${Date.now()}-${safeName}`;
-      
-  
-      if (resourceType === "raw" && (mime.includes("pdf") || filename.endsWith(".pdf"))) {
-        public_id += ".pdf";
-      }
-
-      return {
-        folder: folderName,
-        resource_type: resourceType,
-        public_id: public_id,
-        access_mode: 'public', 
-      };
-    } catch (error) {
-      console.error("Error in Multer Params:", error);
-      throw error;
+    if (mime.startsWith("video")) {
+      folderName = "academy_videos";
+      resource_type = "video";
+    } else if (mime.includes("pdf")) {
+      folderName = "academy_pdfs";
+      resource_type = "raw"; // Cloudinary uses 'raw' for PDFs or non-media
     }
+
+    return {
+      folder: folderName,
+      resource_type: resource_type,
+      public_id: `${Date.now()}-${file.originalname.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9.\-_]/g, "_")}`
+    };
   },
 });
 
 export const uploadContent = multer({
   storage: storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, 
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
 });
