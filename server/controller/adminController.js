@@ -237,9 +237,12 @@ export const deleteSubModule = async (req, res) => {
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+const userRegion = process.env.BUNNY_STORAGE_REGION || "sg";
+const s3Region = userRegion.toLowerCase() === 'de' ? 'fsn1' : userRegion;
+
 const s3Client = new S3Client({
   endpoint: process.env.BUNNY_STORAGE_ENDPOINT || "https://sg.storage.bunnycdn.com",
-  region: process.env.BUNNY_STORAGE_REGION || "sg",
+  region: s3Region,
   forcePathStyle: true, // CRITICAL for Bunny.net S3 API compatibility
   credentials: {
     accessKeyId: process.env.BUNNY_STORAGE_ZONE || "meetapp-storage",
