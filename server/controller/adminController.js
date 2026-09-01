@@ -177,7 +177,7 @@ export const deleteModule = async (req, res) => {
 export const addSubModule = async (req, res) => {
   try {
     const { moduleId } = req.params;
-    const { title, order } = req.body;
+    const { title, order, parentSubModule } = req.body;
 
     if (!title) return res.status(400).json({ message: "SubModule title is required" });
 
@@ -187,7 +187,8 @@ export const addSubModule = async (req, res) => {
     const newSubModule = await SubModule.create({
       module: moduleId,
       title,
-      order: order || 0
+      order: order || 0,
+      parentSubModule: parentSubModule || null
     });
 
     res.status(201).json(newSubModule);
@@ -200,13 +201,14 @@ export const addSubModule = async (req, res) => {
 export const updateSubModule = async (req, res) => {
   try {
     const { subModuleId } = req.params;
-    const { title, order } = req.body;
+    const { title, order, parentSubModule } = req.body;
 
     const subMod = await SubModule.findById(subModuleId);
     if (!subMod) return res.status(404).json({ message: "SubModule not found" });
 
     if (title) subMod.title = title;
     if (order !== undefined) subMod.order = order;
+    if (parentSubModule !== undefined) subMod.parentSubModule = parentSubModule === "" ? null : parentSubModule;
 
     await subMod.save();
     res.json(subMod);
