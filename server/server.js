@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors"; 
-
+import compression from "compression";
 
 // import apiRoutes from "./routes/apiRoutes.js"; 
  import authRoutes from "./routes/authRoutes.js";
@@ -34,6 +34,7 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+app.use(compression());
 app.use(cors({
   exposedHeaders: ["X-Total-Count", "X-Total-Pages"]
 }));

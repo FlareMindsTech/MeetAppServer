@@ -24,12 +24,11 @@ const getDiscountedPrice = (course) => {
 // @route   GET /api/courses
 export const getPublicCourses = async (req, res) => {
   try {
-    const { type } = req.query;
+    const { type, page, limit = 20, search, category } = req.query;
     let filter = {};
 
     const studentId = req.user?.id;
 
-    // "My Courses" logic from before
     if ((type === "my" || type === "purchased") && studentId) {
         const student = await User.findById(studentId).lean();
         const enrolledCourseIds = (student?.subscribedCourses || [])
@@ -41,15 +40,25 @@ export const getPublicCourses = async (req, res) => {
         if (type === "live") filter.isLiveCourse = true;
     }
 
-    const courses = await Course.find(filter).sort({ createdAt: -1 }).lean();
-    
-    // If student is logged in, attach subscription status to each course
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), "i");
+      filter.$or = [
+        { title: searchRegex },
+        { description: searchRegex },
+        { category: searchRegex },
+      ];
+    }
+
+    if (category && category.trim()) {
+      filter.category = category.trim();
+    }
+
     let student = null;
     if (studentId) {
       student = await User.findById(studentId).lean();
     }
 
-    const coursesWithStatus = courses.map(course => {
+    const attachStatus = (coursesList) => coursesList.map(course => {
       let isSubscribed = false;
       if (student && student.subscribedCourses) {
         const now = new Date();
@@ -57,7 +66,6 @@ export const getPublicCourses = async (req, res) => {
           (sub) => sub.courseId.toString() === course._id.toString() && new Date(sub.expiresAt) > now
         );
       }
-
       return {
         ...course,
         discountedPrice: getDiscountedPrice(course),
@@ -65,7 +73,25 @@ export const getPublicCourses = async (req, res) => {
       };
     });
 
-    res.json(coursesWithStatus);
+    if (!page) {
+      const courses = await Course.find(filter).sort({ createdAt: -1 }).lean();
+      return res.json(attachStatus(courses));
+    }
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [courses, totalCount] = await Promise.all([
+      Course.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Course.countDocuments(filter),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limitNum);
+
+    res.set("X-Total-Count", String(totalCount));
+    res.set("X-Total-Pages", String(totalPages));
+    res.json(attachStatus(courses));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

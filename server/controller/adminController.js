@@ -500,7 +500,45 @@ const canManageTarget = (requesterRole, targetRole) => {
 
 export const getAllStudents = async (req, res) => {
   try {
-    const students = await User.find({ role: "student" }).sort({ createdAt: -1 });
+    const { page, limit = 20, search } = req.query;
+
+    const filter = { role: "student" };
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), "i");
+      filter.$or = [
+        { FirstName: searchRegex },
+        { LastName: searchRegex },
+        { email: searchRegex },
+        { phoneNumber: searchRegex },
+      ];
+    }
+
+    if (!page) {
+      const students = await User.find(filter)
+        .select("-password -rawPassword -otp -otpExpires -resetPasswordToken -resetPasswordExpires")
+        .sort({ createdAt: -1 })
+        .lean();
+      return res.json(students);
+    }
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [students, totalCount] = await Promise.all([
+      User.find(filter)
+        .select("-password -rawPassword -otp -otpExpires -resetPasswordToken -resetPasswordExpires")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limitNum);
+
+    res.set("X-Total-Count", String(totalCount));
+    res.set("X-Total-Pages", String(totalPages));
     res.json(students);
   } catch (err) {
     res.status(500).json({ message: err.message });
