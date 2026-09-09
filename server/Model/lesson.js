@@ -16,6 +16,9 @@ const lessonSchema = new mongoose.Schema(
       default: "Other" 
     },
     contentUrl: { type: String, required: true },
+    videoProvider: { type: String, enum: ["storage", "bunny-stream"], default: "storage" },
+    bunnyVideoId: { type: String },
+    bunnyLibraryId: { type: String },
     isFree: { type: Boolean, default: false },
     duration: { type: Number },
     order: { type: Number, default: 0 },

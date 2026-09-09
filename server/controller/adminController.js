@@ -1,5 +1,4 @@
-// import path from "path";
-// import fs from "fs";
+import crypto from "crypto";
 import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
 import { sendEnrollmentEmail } from "../utils/emailService.js";
@@ -9,6 +8,65 @@ import SubModule from "../Model/subModule.js";
 import Lesson from "../Model/lesson.js";
 import Progress from "../Model/progress.js";
 import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
+
+const bunnyStreamUploadUrl = "https://video.bunnycdn.com/tusupload";
+
+const getBunnyStreamPlaybackUrl = (videoId) => {
+  const pullZone = process.env.BUNNY_STREAM_PULL_ZONE ||
+    `vz-${process.env.BUNNY_STREAM_LIBRARY_ID}.b-cdn.net`;
+  return pullZone ? `https://${pullZone}/${videoId}/playlist.m3u8` : null;
+};
+
+// @desc Generate a short-lived TUS upload authorization for Bunny Stream.
+export const createBunnyStreamUpload = async (req, res) => {
+  try {
+    const bunnyStreamLibraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
+    const bunnyStreamApiKey = process.env.BUNNY_STREAM_API_KEY;
+    if (!bunnyStreamLibraryId || !bunnyStreamApiKey) {
+      return res.status(500).json({ message: "Bunny Stream is not configured on the server." });
+    }
+
+    const title = String(req.body.title || "").trim();
+    if (!title) return res.status(400).json({ message: "Video title is required." });
+
+    const bunnyResponse = await fetch(
+      `https://video.bunnycdn.com/library/${bunnyStreamLibraryId}/videos`,
+      {
+        method: "POST",
+        headers: {
+          AccessKey: bunnyStreamApiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title }),
+      },
+    );
+
+    if (!bunnyResponse.ok) {
+      const details = await bunnyResponse.text();
+      return res.status(502).json({ message: `Bunny Stream video creation failed: ${details}` });
+    }
+
+    const video = await bunnyResponse.json();
+    const videoId = video.guid;
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+    const signature = crypto
+      .createHash("sha256")
+      .update(`${bunnyStreamLibraryId}${bunnyStreamApiKey}${expiresAt}${videoId}`)
+      .digest("hex");
+
+    res.json({
+      videoId,
+      libraryId: bunnyStreamLibraryId,
+      uploadUrl: bunnyStreamUploadUrl,
+      authorizationSignature: signature,
+      authorizationExpire: expiresAt,
+      playbackUrl: getBunnyStreamPlaybackUrl(videoId),
+    });
+  } catch (err) {
+    console.error("Bunny Stream upload initialization error:", err);
+    res.status(500).json({ message: err.message || "Unable to initialize Bunny Stream upload." });
+  }
+};
 
 // --- 1. PUBLIC & STUDENT APIs ---
 
@@ -283,7 +341,10 @@ export const generatePresignedUrl = async (req, res) => {
 // @desc    Create a new Lesson (Video/PDF)
 export const createLesson = async (req, res) => {
   try {
-    const { subModuleId, title, isFree, duration, order, category, contentUrl: bodyContentUrl } = req.body;
+    const {
+      subModuleId, title, isFree, duration, order, category, type: requestedType,
+      contentUrl: bodyContentUrl, videoProvider, bunnyVideoId, bunnyLibraryId,
+    } = req.body;
     const file = req.file;
 
     if (!subModuleId || !title || (!file && !bodyContentUrl)) {
@@ -292,7 +353,7 @@ export const createLesson = async (req, res) => {
         .json({ message: "SubModule ID, Title, and File/URL are required" });
     }
 
-    let type = "text";
+    let type = requestedType || "text";
     let finalContentUrl = "";
     let autoDuration = 0;
     
@@ -301,6 +362,7 @@ export const createLesson = async (req, res) => {
     const mime = file ? file.mimetype.toLowerCase() : "";
 
     if (
+      type === "video" ||
       mime.startsWith("video/") ||
       sourcePath.endsWith(".mp4") ||
       sourcePath.endsWith(".mkv") ||
@@ -322,7 +384,7 @@ export const createLesson = async (req, res) => {
           console.error("Failed to fetch video duration from Cloudinary:", cloudErr.message);
         }
       }
-    } else if (mime.includes("pdf") || sourcePath.endsWith(".pdf")) {
+    } else if (type !== "video" && (mime.includes("pdf") || sourcePath.endsWith(".pdf"))) {
       type = "pdf";
     }
 
@@ -334,6 +396,9 @@ export const createLesson = async (req, res) => {
       type,
       category: category || "Other",
       contentUrl: finalContentUrl,
+      videoProvider: videoProvider || "storage",
+      bunnyVideoId,
+      bunnyLibraryId,
       isFree: isFree === "true" || isFree === true,
       duration: Number(duration) || autoDuration || 0,
       order: Number(order) || 0,
@@ -350,7 +415,10 @@ export const createLesson = async (req, res) => {
 export const updateLesson = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, isFree, order, category, subModuleId, contentUrl: bodyContentUrl } = req.body;
+    const {
+      title, isFree, order, category, subModuleId, type: requestedType,
+      contentUrl: bodyContentUrl, videoProvider, bunnyVideoId, bunnyLibraryId,
+    } = req.body;
 
     const lesson = await Lesson.findById(id);
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
@@ -364,11 +432,12 @@ export const updateLesson = async (req, res) => {
     if (order !== undefined) lesson.order = order;
 
     if (req.file || bodyContentUrl) {
-      let type = "text";
+      let type = requestedType || "text";
       const sourceFile = req.file ? req.file.originalname.toLowerCase() : (bodyContentUrl || "").toLowerCase();
       const mime = req.file ? req.file.mimetype.toLowerCase() : "";
 
       if (
+        type === "video" ||
         mime.startsWith("video/") ||
         sourceFile.endsWith(".mp4") ||
         sourceFile.endsWith(".mkv") ||
@@ -394,6 +463,9 @@ export const updateLesson = async (req, res) => {
 
       lesson.contentUrl = req.file ? req.file.path : bodyContentUrl;
       lesson.type = type;
+      if (videoProvider) lesson.videoProvider = videoProvider;
+      if (bunnyVideoId) lesson.bunnyVideoId = bunnyVideoId;
+      if (bunnyLibraryId) lesson.bunnyLibraryId = bunnyLibraryId;
     }
 
     await lesson.save();
