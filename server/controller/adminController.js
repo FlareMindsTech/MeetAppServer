@@ -12,9 +12,10 @@ import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
 const bunnyStreamUploadUrl = "https://video.bunnycdn.com/tusupload";
 
 const getBunnyStreamPlaybackUrl = (videoId) => {
-  const pullZone = process.env.BUNNY_STREAM_PULL_ZONE ||
-    `vz-${process.env.BUNNY_STREAM_LIBRARY_ID}.b-cdn.net`;
-  return pullZone ? `https://${pullZone}/${videoId}/playlist.m3u8` : null;
+  const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
+  return libraryId
+    ? `https://iframe.mediadelivery.net/embed/${libraryId}/${videoId}`
+    : null;
 };
 
 // @desc Generate a short-lived TUS upload authorization for Bunny Stream.

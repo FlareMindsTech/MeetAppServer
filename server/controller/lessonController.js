@@ -54,6 +54,9 @@ export const getSubModuleLessons = async (req, res) => {
       // Expose contentUrl if privileged, subscribed, or lesson is free
       if (hasAccess || lesson.isFree) {
         lessonData.contentUrl = lesson.contentUrl;
+        lessonData.videoProvider = lesson.videoProvider;
+        lessonData.bunnyVideoId = lesson.bunnyVideoId;
+        lessonData.bunnyLibraryId = lesson.bunnyLibraryId;
         if (hasAccess) {
           lessonData.message = "Access Granted";
         }
