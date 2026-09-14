@@ -348,10 +348,10 @@ export const createLesson = async (req, res) => {
     } = req.body;
     const file = req.file;
 
-    if (!subModuleId || !title || (!file && !bodyContentUrl)) {
+    if (!subModuleId || !title || (!file && !bodyContentUrl && !bunnyVideoId && !bunnyLibraryId)) {
       return res
         .status(400)
-        .json({ message: "SubModule ID, Title, and File/URL are required" });
+        .json({ message: "SubModule ID, Title, and File/URL/Bunny ID are required" });
     }
 
     let type = requestedType || "text";
@@ -464,10 +464,11 @@ export const updateLesson = async (req, res) => {
 
       lesson.contentUrl = req.file ? req.file.path : bodyContentUrl;
       lesson.type = type;
-      if (videoProvider) lesson.videoProvider = videoProvider;
-      if (bunnyVideoId) lesson.bunnyVideoId = bunnyVideoId;
-      if (bunnyLibraryId) lesson.bunnyLibraryId = bunnyLibraryId;
     }
+
+    if (videoProvider) lesson.videoProvider = videoProvider;
+    if (bunnyVideoId) lesson.bunnyVideoId = bunnyVideoId;
+    if (bunnyLibraryId) lesson.bunnyLibraryId = bunnyLibraryId;
 
     await lesson.save();
     res.json(lesson);
