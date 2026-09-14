@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors"; 
 import compression from "compression";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 // import apiRoutes from "./routes/apiRoutes.js"; 
  import authRoutes from "./routes/authRoutes.js";
@@ -34,10 +36,30 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+app.use(helmet());
 app.use(compression());
 app.use(cors({
   exposedHeaders: ["X-Total-Count", "X-Total-Pages"]
 }));
+
+// --- RATE LIMITING ---
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per window per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window per IP for auth endpoints
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many attempts, please try again after 15 minutes." }
+});
+
+app.use("/api", generalLimiter);
 
 // --- CACHED CONNECTION LOGIC ---
 let cached = global.mongoose;
@@ -109,6 +131,14 @@ app.use(async (req, res, next) => {
 app.get("/", (req, res) => res.send("API is running successfully!"));
 // app.use("/api", apiRoutes); 
 app.use("/api", authRoutes);
+
+// --- STRICT AUTH RATE LIMITERS ---
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/request-otp", authLimiter);
+app.use("/api/auth/verify-otp", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/register", authLimiter);
+
 app.use("/api", courseRoutes);
 app.use("/api", userRoutes);
 app.use("/api", paymentRoutes);

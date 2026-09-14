@@ -168,7 +168,7 @@ export const requestOTP = async (req, res) => {
     // Generate 4-digit OTP (Predictable 1234 in Dev Mode)
     const otp = process.env.SMS_DEV_MODE === "true" 
       ? "1234" 
-      : Math.floor(1000 + Math.random() * 9000).toString();
+      : crypto.randomInt(1000, 10000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Find or Create User
@@ -200,7 +200,7 @@ export const requestOTP = async (req, res) => {
     user.otpExpires = otpExpires;
     await user.save();
 
-    console.log(`[OTP Request] Saved OTP ${otp} for user ${user._id}`);
+    console.log(`[OTP Request] OTP saved for user ${user._id}`);
 
     // Check if API key is configured (Safety check for Production)
     if (process.env.SMS_DEV_MODE !== "true" && !process.env.FAST2SMS_API_KEY) {
@@ -354,7 +354,7 @@ export const logout = async (req, res) => {
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123", { ignoreExpiration: true });
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
         const user = await User.findById(decoded.id);
         if (user) {
           user.sessionId = crypto.randomBytes(16).toString("hex");

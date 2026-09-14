@@ -29,11 +29,25 @@ export const uploadContent = multer({
   storage: storage,
   limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
   fileFilter: (req, file, cb) => {
-    // If the file is a video, silently discard it so it doesn't get uploaded to Cloudinary
-    if (file.mimetype.toLowerCase().startsWith("video/")) {
+    // Whitelist: Only allow safe, expected file types
+    const allowedMimeTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    const mime = file.mimetype.toLowerCase();
+
+    // Block videos (they go to Bunny Stream, not Cloudinary)
+    if (mime.startsWith("video/")) {
       return cb(null, false);
     }
-    // Otherwise, allow the file upload to proceed (e.g. PDFs, images)
+
+    // Block any file type not in the whitelist
+    if (!allowedMimeTypes.includes(mime)) {
+      return cb(null, false);
+    }
+
     cb(null, true);
   },
 });

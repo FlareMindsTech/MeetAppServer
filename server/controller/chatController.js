@@ -120,6 +120,22 @@ export const sendMessage = async (req, res) => {
     const { conversation_id, message_type, content } = req.body;
     const sender_id = req.user.id;
 
+    // --- SECURITY: Verify user is a participant or Admin/Owner ---
+    const chat = await Chat.findById(conversation_id).select("participants");
+    if (!chat) {
+      return res.status(404).json({ success: false, message: "Chat not found" });
+    }
+
+    const userRole = (req.user.role || "").toLowerCase();
+    const isStaff = userRole === "admin" || userRole === "owner";
+    const isParticipant = chat.participants.some(
+      (p) => p.user_id && p.user_id.toString() === sender_id
+    );
+
+    if (!isStaff && !isParticipant) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
     const newMessage = {
       sender_id,
       message_type: message_type || "TEXT",
@@ -127,7 +143,7 @@ export const sendMessage = async (req, res) => {
       created_at: new Date(),
     };
 
-    const chat = await Chat.findByIdAndUpdate(
+    const updatedChat = await Chat.findByIdAndUpdate(
       conversation_id,
       {
         $push: { messages: newMessage },
@@ -135,7 +151,7 @@ export const sendMessage = async (req, res) => {
       },
       { new: true }
     ).populate("participants.user_id", "name photo role");
-     const savedMsg = chat.messages[chat.messages.length - 1];
+     const savedMsg = updatedChat.messages[updatedChat.messages.length - 1];
 res.status(201).json({ success: true, data: savedMsg });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -148,7 +164,7 @@ export const getMessages = async (req, res) => {
     const { conversation_id } = req.query;
     const chat = await Chat.findById(conversation_id)
       .populate("messages.sender_id", "name photo role")
-      .select("messages");
+      .select("messages participants");
 
       if (!chat) {
       return res.status(404).json({ 
@@ -157,6 +173,16 @@ export const getMessages = async (req, res) => {
       });
     }
 
+    // --- SECURITY: Verify user is a participant or Admin/Owner ---
+    const userRole = (req.user.role || "").toLowerCase();
+    const isStaff = userRole === "admin" || userRole === "owner";
+    const isParticipant = chat.participants.some(
+      (p) => p.user_id && p.user_id.toString() === req.user.id
+    );
+
+    if (!isStaff && !isParticipant) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
 
     res.status(200).json({ success: true, data: chat.messages });
   } catch (error) {

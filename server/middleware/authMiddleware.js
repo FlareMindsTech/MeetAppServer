@@ -19,7 +19,7 @@ export default async function auth(req, res, next) {
 
   // Verify JWT
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Check if session is valid (Single Device Logic)
     const user = await User.findById(decoded.id).select("sessionId role email");
@@ -52,7 +52,7 @@ export const optionalAuth = async (req, res, next) => {
 
   const token = authHeader.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select("sessionId role email");
     if (user && (!decoded.sessionId || !user.sessionId || decoded.sessionId === user.sessionId)) {
       req.user = decoded;
