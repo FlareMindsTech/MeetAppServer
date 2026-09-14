@@ -16,7 +16,7 @@ import {
 import { 
   addModule, updateModule, deleteModule, 
   createLesson, updateLesson, deleteLesson, uploadResource,
-  addSubModule, updateSubModule, deleteSubModule, generatePresignedUrl, createBunnyStreamUpload
+  addSubModule, updateSubModule, deleteSubModule, createBunnyStreamUpload
 } from "../controller/adminController.js";
 import { uploadMedia } from "../controller/cloudinaryController.js";
 
@@ -57,7 +57,6 @@ router.post("/admin/lessons/create", auth, adminOnly, uploadContent.single("cont
 router.put("/admin/lessons/:id/update", auth, adminOnly, uploadContent.single("contentFile"), updateLesson);
 router.delete("/admin/lessons/:id/delete", auth, adminOnly, deleteLesson);
 router.post("/admin/lesson/upload", auth, adminOnly, uploadContent.single("contentFile"), uploadResource);
-router.post("/admin/lesson/presigned-url", auth, adminOnly, generatePresignedUrl);
 router.post("/admin/lesson/bunny-stream-upload", auth, adminOnly, createBunnyStreamUpload);
 
 export default router;

@@ -295,49 +295,6 @@ export const deleteSubModule = async (req, res) => {
 
 // --- 4. LESSON MANAGEMENT ---
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-const userRegion = process.env.BUNNY_STORAGE_REGION || "sg";
-const s3Region = userRegion.toLowerCase() === 'de' ? 'fsn1' : userRegion;
-
-const s3Client = new S3Client({
-  endpoint: process.env.BUNNY_STORAGE_ENDPOINT || "https://sg.storage.bunnycdn.com",
-  region: s3Region,
-  forcePathStyle: true, // CRITICAL for Bunny.net S3 API compatibility
-  credentials: {
-    accessKeyId: process.env.BUNNY_STORAGE_ZONE || "meetapp-storage",
-    secretAccessKey: process.env.BUNNY_STORAGE_API_KEY || "79daa380-5a80-44bc-bac6349f68f8-2880-479b"
-  }
-});
-
-// @desc    Generate Presigned URL for Bunny.net Direct Upload
-export const generatePresignedUrl = async (req, res) => {
-  try {
-    const { filename, filetype } = req.body;
-    
-    if (!filename) {
-      return res.status(400).json({ message: "Filename is required" });
-    }
-
-    const uniqueFilename = `${Date.now()}_${filename.replace(/\s+/g, "_")}`;
-    const key = `academy_files/${uniqueFilename}`;
-
-    const command = new PutObjectCommand({
-      Bucket: process.env.BUNNY_STORAGE_ZONE || "meetapp-storage",
-      Key: key,
-      ContentType: filetype || "application/octet-stream",
-    });
-
-    const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-    const finalUrl = `https://${process.env.BUNNY_PULL_ZONE || 'meetapp-storage.b-cdn.net'}/${key}`;
-
-    res.json({ presignedUrl, finalUrl });
-  } catch (err) {
-    console.error("Presigned URL Error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
 
 // @desc    Create a new Lesson (Video/PDF)
 export const createLesson = async (req, res) => {
