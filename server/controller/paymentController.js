@@ -301,17 +301,9 @@ export const verifySubscription = async (req, res) => {
       .update(body)
       .digest("hex");
 
-    const isTestMode = process.env.RAZORPAY_KEY_ID?.startsWith('rzp_test_');
-
     if (expectedSignature !== signature) {
       console.error("Signature mismatch. Expected:", expectedSignature, "Received:", signature, "Body Used:", body);
-      
-      // If in test mode, we can be more lenient if the IDs exist and are valid
-      if (isTestMode) {
-        console.warn("Test Mode Detected: Bypassing signature mismatch for testing purposes.");
-      } else {
-        return res.status(400).json({ message: "Invalid subscription signature" });
-      }
+      return res.status(400).json({ message: "Invalid subscription signature" });
     }
 
     const student = await User.findById(studentId);
@@ -1426,82 +1418,117 @@ export const getStudentPaymentHistory = async (req, res) => {
       return res.status(200).json([]);
     }
 
-    const historyRaw = await Promise.all(
-      allHistoryRaw.map(async (pay) => {
-        const course = pay.course;
-        if (!course) return null;
+    // === BULK QUERY OPTIMIZATION ===
+    const allCourseIds = allHistoryRaw.map(pay => pay.course && pay.course._id).filter(id => id);
+    const uniqueCourseIds = [...new Set(allCourseIds.map(String))];
 
-        let modulesData = [];
-        const paymentStatus = pay.status ? pay.status.toLowerCase() : "success";
-        
-        // Find the subscription status for THIS specific course/student pair
-        const subRecord = await Subscription.findOne({ 
-          student: objectId, 
-          course: course._id 
-        }).sort({ createdAt: -1 });
+    // 1. Fetch modules, submodules, and lessons in bulk
+    const allModules = await Module.find({ course: { $in: uniqueCourseIds } }).sort({ order: 1 }).lean();
+    const moduleIds = allModules.map(m => m._id);
 
-        // A course is ONLY active if it doesn't have a cancelled subscription record
-        const isCancelled = subRecord && subRecord.status === 'cancelled';
-        const isPaid = ["success", "completed", "captured", "active"].includes(paymentStatus) && !isCancelled;
+    const allSubModules = await mongoose.model("SubModule").find({ module: { $in: moduleIds } }).lean();
+    const subModuleIds = allSubModules.map(s => s._id);
 
-        const subscriptionInfo = student.subscribedCourses?.find(
-          (sub) => String(sub.courseId) === String(course?._id)
-        );
-        const expiresAt = subscriptionInfo?.expiresAt || null;
+    const allLessons = await Lesson.find({ subModule: { $in: subModuleIds } })
+      .sort({ order: 1 })
+      .select("title duration type isFree contentUrl asset subModule")
+      .lean();
 
-        if (course && course._id) {
-          const modules = await Module.find({ course: course._id }).sort({ order: 1 }).lean();
+    // 2. Map Lessons -> SubModules -> Modules
+    const lessonsBySubModule = {};
+    for (const l of allLessons) {
+      const sid = String(l.subModule);
+      if (!lessonsBySubModule[sid]) lessonsBySubModule[sid] = [];
+      lessonsBySubModule[sid].push(l);
+    }
 
-          modulesData = await Promise.all(
-            modules.map(async (mod) => {
-              const lessons = await Lesson.find({ module: mod._id })
-                .sort({ order: 1 })
-                .select("title duration type isFree contentUrl asset") 
-                .lean();
+    const lessonsByModule = {};
+    for (const sm of allSubModules) {
+      const mid = String(sm.module);
+      if (!lessonsByModule[mid]) lessonsByModule[mid] = [];
+      const smLessons = lessonsBySubModule[String(sm._id)] || [];
+      lessonsByModule[mid].push(...smLessons);
+    }
 
-              return {
-                id: mod._id,
-                moduleTitle: mod.title,
-                totalLessons: lessons.length,
-                lessons: lessons.map(l => {
-                  const hasAccess = l.isFree === true || isPaid;
-                  const secureUrl = hasAccess ? (l.contentUrl || null) : null;
+    const modulesByCourse = {};
+    for (const m of allModules) {
+      const cid = String(m.course);
+      if (!modulesByCourse[cid]) modulesByCourse[cid] = [];
+      
+      const mLessons = lessonsByModule[String(m._id)] || [];
+      modulesByCourse[cid].push({
+        id: m._id,
+        moduleTitle: m.title,
+        totalLessons: mLessons.length,
+        lessons: mLessons 
+      });
+    }
 
-                  return {
-                    id: l._id,
-                    title: l.title,
-                    duration: l.duration,
-                    type: l.type,
-                    isFree: l.isFree,
-                    contentUrl: secureUrl,
-                    asset: hasAccess ? (l.asset || null) : null
-                  };
-                })
-              };
-            })
-          );
+    // 3. Fetch all Subscriptions in bulk
+    const allSubs = await Subscription.find({ student: objectId, course: { $in: uniqueCourseIds } }).sort({ createdAt: -1 }).lean();
+    const subByCourse = {};
+    for (const s of allSubs) {
+      const cid = String(s.course);
+      // Keep the most recent due to sort order
+      if (!subByCourse[cid]) subByCourse[cid] = s; 
+    }
+
+    // === PROCESS HISTORY ===
+    const historyRaw = allHistoryRaw.map((pay) => {
+      const course = pay.course;
+      if (!course) return null;
+
+      const cid = String(course._id);
+      const paymentStatus = pay.status ? pay.status.toLowerCase() : "success";
+      
+      const subRecord = subByCourse[cid];
+      const isCancelled = subRecord && subRecord.status === 'cancelled';
+      const isPaid = ["success", "completed", "captured", "active"].includes(paymentStatus) && !isCancelled;
+
+      const subscriptionInfo = student.subscribedCourses?.find(
+        (sub) => String(sub.courseId) === cid
+      );
+      const expiresAt = subscriptionInfo?.expiresAt || null;
+
+      const courseModules = modulesByCourse[cid] || [];
+      const modulesData = courseModules.map(mod => ({
+        id: mod.id,
+        moduleTitle: mod.moduleTitle,
+        totalLessons: mod.totalLessons,
+        lessons: mod.lessons.map(l => {
+          const hasAccess = l.isFree === true || isPaid;
+          const secureUrl = hasAccess ? (l.contentUrl || null) : null;
+          return {
+            id: l._id,
+            title: l.title,
+            duration: l.duration,
+            type: l.type,
+            isFree: l.isFree,
+            contentUrl: secureUrl,
+            asset: hasAccess ? (l.asset || null) : null
+          };
+        })
+      }));
+
+      return {
+        id: pay._id,
+        courseId: course._id,
+        courseTitle: course.title || "Unknown Course",
+        courseThumbnail: course.thumbnail || null,
+        amount: pay.amount,
+        currency: pay.currency || "INR",
+        orderId: pay.razorpay_order_id,
+        paymentId: pay.razorpay_payment_id,
+        date: pay.createdAt,
+        expiresAt: expiresAt, 
+        status: pay.status || "Success",
+        isPurchased: isPaid,
+        contentSummary: {
+          totalModules: modulesData.length,
+          modules: modulesData
         }
-
-        return {
-          id: pay._id,
-          courseId: course?._id || null,
-          courseTitle: course?.title || "Unknown Course",
-          courseThumbnail: course?.thumbnail || null,
-          amount: pay.amount,
-          currency: pay.currency || "INR",
-          orderId: pay.razorpay_order_id,
-          paymentId: pay.razorpay_payment_id,
-          date: pay.createdAt,
-          expiresAt: expiresAt, 
-          status: pay.status || "Success",
-          isPurchased: isPaid,
-          contentSummary: {
-            totalModules: modulesData.length,
-            modules: modulesData
-          }
-        };
-      })
-    );
+      };
+    });
 
     const history = historyRaw.filter(h => h !== null);
 

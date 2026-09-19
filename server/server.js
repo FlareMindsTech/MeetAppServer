@@ -130,7 +130,6 @@ app.use(async (req, res, next) => {
 
 app.get("/", (req, res) => res.send("API is running successfully!"));
 // app.use("/api", apiRoutes); 
-app.use("/api", authRoutes);
 
 // --- STRICT AUTH RATE LIMITERS ---
 app.use("/api/auth/login", authLimiter);
@@ -138,6 +137,8 @@ app.use("/api/auth/request-otp", authLimiter);
 app.use("/api/auth/verify-otp", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
 app.use("/api/auth/register", authLimiter);
+
+app.use("/api", authRoutes);
 
 app.use("/api", courseRoutes);
 app.use("/api", userRoutes);
