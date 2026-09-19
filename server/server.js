@@ -147,6 +147,16 @@ app.use("/api", quizRoutes);
 app.use("/api", featureRoutes);
 app.use("/api", chatRoutes);
 app.use("/api/meetings", meetingRoutes);
+
+// --- GLOBAL ERROR HANDLER ---
+app.use((err, req, res, next) => {
+  console.error("GLOBAL SERVER CRASH:", err);
+  res.status(500).json({ 
+    message: "Server Crash: " + (err.message || err.toString()), 
+    stack: process.env.VERCEL ? undefined : err.stack 
+  });
+});
+
 // --- START SERVER ---
 if (!process.env.VERCEL) {
     const PORT = process.env.PORT || 5000;
