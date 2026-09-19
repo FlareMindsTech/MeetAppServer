@@ -2,6 +2,7 @@ import User from "../Model/userSchema.js";
 import Meeting from "../Model/meet.js";
 import Course from "../Model/course.js";
 import bcrypt from "bcryptjs"; 
+import mongoose from "mongoose";
 // import path from "path";       
 // import fs from "fs";           
 
@@ -17,14 +18,51 @@ export const getProfile = async (req, res) => {
       });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Filter out subscriptions where the referenced course has been deleted (courseId is null)
-    if (user.subscribedCourses && user.subscribedCourses.length > 0) {
-      user.subscribedCourses = user.subscribedCourses.filter(
-        (sub) => sub && sub.courseId !== null
-      );
+    // Fix: Instead of relying purely on the legacy user array, we fetch real financial ledgers 
+    // to build a 100% accurate, dynamically synced subscribedCourses array for the app layout.
+    const studentObjectId = new mongoose.Types.ObjectId(req.user.id || req.user._id);
+    const [subscriptions, payments] = await Promise.all([
+      mongoose.model("Subscription").find({ student: studentObjectId, status: { $ne: "cancelled" } })
+        .populate("course", "title description category price duration durationInDays thumbnail isLiveCourse isRecurring")
+        .lean(),
+      mongoose.model("Payment").find({ student: studentObjectId })
+        .populate("course", "title description category price duration durationInDays thumbnail isLiveCourse isRecurring")
+        .lean()
+    ]);
+
+    const courseMap = new Map();
+    const now = new Date();
+
+    const registerSub = (courseObj, expiresAt, subscribedAt) => {
+      if (!courseObj) return; // ignore deleted courses
+      const cid = String(courseObj._id);
+      const isLifetime = new Date(expiresAt).getFullYear() > 4000;
+      const isValid = isLifetime ? true : (new Date(expiresAt) > now);
+
+      if (!courseMap.has(cid) || isValid) {
+        courseMap.set(cid, {
+          courseId: courseObj, // Full populated course object required by UI
+          expiresAt: expiresAt,
+          subscribedAt: subscribedAt
+        });
+      }
+    };
+
+    // Load actual receipts tracking
+    payments.forEach(pay => registerSub(pay.course, new Date("9999-12-31T23:59:59.000Z"), pay.createdAt));
+    subscriptions.forEach(sub => registerSub(sub.course, sub.expiresAt || new Date("9999-12-31T23:59:59.000Z"), sub.createdAt));
+
+    // Load any hidden manual grants
+    if (user.subscribedCourses) {
+      user.subscribedCourses.forEach(sub => {
+        if (sub.courseId) registerSub(sub.courseId, sub.expiresAt, sub.subscribedAt);
+      });
     }
 
-    res.json(user);
+    const userObj = user.toObject();
+    userObj.subscribedCourses = Array.from(courseMap.values());
+
+    res.json(userObj);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

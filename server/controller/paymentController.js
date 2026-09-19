@@ -1271,26 +1271,62 @@ export const getAllPayments = async (req, res) => {
 export const getSubscriptionStatus = async (req, res) => {
   try {
     const studentId = req.user.id;
-    const user = await User.findById(studentId).populate({ path: "subscribedCourses.courseId", select: "title thumbnail" });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const objectId = new mongoose.Types.ObjectId(studentId);
 
+    // 1. Fetch raw data from real financial ledgers (Payments and Subscriptions)
+    const subscriptions = await Subscription.find({ student: objectId, status: { $ne: "cancelled" } })
+      .populate("course", "title thumbnail")
+      .lean();
+
+    const payments = await Payment.find({ student: objectId })
+      .populate("course", "title thumbnail")
+      .lean();
+
+    // 2. Use a Map to combine ledgers and prevent duplicates
+    const courseMap = new Map();
     const now = new Date();
-    const statusList = user.subscribedCourses
-      .map((sub) => {
-        if (!sub.courseId) return null;
-        const isValid = new Date(sub.expiresAt) > now;
-        return {
-          courseId: sub.courseId._id,
-          courseTitle: sub.courseId.title,
-          thumbnail: sub.courseId.thumbnail,
-          status: isValid ? "Active" : "Expired",
-          expiresAt: sub.expiresAt,
-          subscribedAt: sub.subscribedAt,
-        };
-      })
-      .filter((item) => item !== null);
 
-    res.json(statusList);
+    const registerCourseAccess = (courseObj, expiresAt, subscribedAt) => {
+      if (!courseObj) return; // CRITICAL: Silently skip if course was deleted by Admin
+      
+      const cid = String(courseObj._id);
+      const isLifetime = new Date(expiresAt).getFullYear() > 4000;
+      const isValid = isLifetime ? true : (new Date(expiresAt) > now);
+      
+      // If we don't have this course yet, or if this new record grants Active access, we record it.
+      if (!courseMap.has(cid) || isValid) {
+        courseMap.set(cid, {
+          courseId: courseObj._id,
+          courseTitle: courseObj.title,
+          thumbnail: courseObj.thumbnail,
+          status: isValid ? "Active" : "Expired",
+          expiresAt: expiresAt,
+          subscribedAt: subscribedAt
+        });
+      }
+    };
+
+    // Process old one-time payments (lifetime access)
+    payments.forEach(pay => {
+      registerCourseAccess(pay.course, new Date("9999-12-31T23:59:59.000Z"), pay.createdAt);
+    });
+
+    // Process newer subscription entries
+    subscriptions.forEach(sub => {
+      registerCourseAccess(sub.course, sub.expiresAt || new Date("9999-12-31T23:59:59.000Z"), sub.createdAt);
+    });
+    
+    // 3. Fallback check: Look at the old legacy User array in case they were granted access manually
+    const user = await User.findById(studentId).populate("subscribedCourses.courseId", "title thumbnail");
+    if (user && user.subscribedCourses) {
+      user.subscribedCourses.forEach(sub => {
+        registerCourseAccess(sub.courseId, sub.expiresAt, sub.subscribedAt);
+      });
+    }
+
+    // Export mapped data to array
+    const finalStatusList = Array.from(courseMap.values());
+    res.json(finalStatusList);
   } catch (err) {
     console.error("getSubscriptionStatus err:", err);
     res.status(500).json({ message: err.message || "Internal Server Error" });
