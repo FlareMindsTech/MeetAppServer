@@ -150,7 +150,7 @@ export const sendMessage = async (req, res) => {
         $set: { last_message_at: new Date() },
       },
       { new: true }
-    ).populate("participants.user_id", "name photo role");
+    ).populate("participants.user_id", "FirstName LastName photo role");
      const savedMsg = updatedChat.messages[updatedChat.messages.length - 1];
 res.status(201).json({ success: true, data: savedMsg });
   } catch (error) {
@@ -163,7 +163,7 @@ export const getMessages = async (req, res) => {
   try {
     const { conversation_id } = req.query;
     const chat = await Chat.findById(conversation_id)
-      .populate("messages.sender_id", "name photo role")
+      .populate("messages.sender_id", "FirstName LastName photo role")
       .select("messages participants");
 
       if (!chat) {
@@ -211,7 +211,7 @@ export const getConversations = async (req, res) => {
     const userId = req.user.id;
 
     const chats = await Chat.find({ "participants.user_id": userId })
-      .populate("participants.user_id", "name photo role")
+      .populate("participants.user_id", "FirstName LastName photo role")
       .sort({ last_message_at: -1 });
 
     res.status(200).json({ success: true, data: chats });
