@@ -199,16 +199,12 @@ export const requestOTP = async (req, res) => {
     
     const isExistingUser = user && (user.FirstName || user.lastLogin);
 
-    // Check modes
-    if (mode === 'signin') {
-      if (!isExistingUser) {
-        return res.status(404).json({ message: "No account found. Please sign up." });
-      }
-    } else if (mode === 'signup') {
-      if (isExistingUser) {
-        return res.status(400).json({ message: "Account already exists. Please sign in." });
-      }
+    // Check modes (Unified OTP Login/Signup)
+    // If a user tries to sign in but doesn't exist, we will create an account for them automatically.
+    if (mode === 'signup' && isExistingUser) {
+      return res.status(400).json({ message: "Account already exists. Please sign in." });
     }
+
 
     if (!user) {
       // Create new user if doesn't exist (Signup)
