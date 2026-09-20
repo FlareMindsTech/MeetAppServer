@@ -19,12 +19,29 @@ export const register = async (req, res) => {
     const { FirstName, LastName, phoneNumber, email, password, role, adminSecret } = req.body;
     const normalizedPhone = normalizePhone(phoneNumber);
 
+    if (!FirstName || !FirstName.trim()) {
+      return res.status(400).json({ message: "First Name is mandatory to register." });
+    }
+    if (!LastName || !LastName.trim()) {
+      return res.status(400).json({ message: "Last Name is mandatory to register." });
+    }
+
     const existing = await User.findOne({ 
       $or: [{ email }, { phoneNumber: normalizedPhone }] 
     });
     
     if (existing) {
       return res.status(400).json({ message: "User with this email or phone already exists" });
+    }
+
+    // Name uniqueness validation
+    const existingName = await User.findOne({
+      FirstName: { $regex: new RegExp(`^${FirstName.trim()}$`, "i") },
+      LastName: { $regex: new RegExp(`^${LastName.trim()}$`, "i") }
+    });
+
+    if (existingName) {
+      return res.status(400).json({ message: "A user with this exact First Name and Last Name already exists." });
     }
 
     // --- SECURITY LOGIC ---
@@ -50,7 +67,7 @@ export const register = async (req, res) => {
       FirstName,
       LastName,
       phoneNumber: normalizedPhone,
-      email,
+      email: email && email.trim() !== "" ? email : undefined,
       password,
       role: assignedRole,
       isActive: true,
@@ -100,10 +117,16 @@ export const login = async (req, res) => {
 
     const normalizedPhone = phoneNumber ? normalizePhone(phoneNumber) : (email && email.match(/^\d{10}$/) ? normalizePhone(email) : null);
 
-    // Find user by Email OR Phone
-    const user = await User.findOne({
-      $or: [{ email: email }, { phoneNumber: normalizedPhone }],
-    });
+    const searchOptions = [];
+    if (email) searchOptions.push({ email: email });
+    if (normalizedPhone) searchOptions.push({ phoneNumber: normalizedPhone });
+
+    if (searchOptions.length === 0) {
+      return res.status(400).json({ message: "Invalid search criteria" });
+    }
+
+    // Find user safely by Email OR Phone without polluting with nulls
+    const user = await User.findOne({ $or: searchOptions });
 
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
