@@ -5,6 +5,7 @@ import cors from "cors";
 import compression from "compression";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import jwt from "jsonwebtoken";
 
 // import apiRoutes from "./routes/apiRoutes.js"; 
  import authRoutes from "./routes/authRoutes.js";
@@ -45,10 +46,25 @@ app.use(cors({
 // --- RATE LIMITING ---
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window per IP
+  max: 1000, // Increased to 1000 requests per window per IP
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many requests, please try again later." }
+  message: { message: "Too many requests, please try again later." },
+  skip: (req) => {
+    const authHeader = req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded && (decoded.role === "owner" || decoded.role === "admin")) {
+          return true; // Completely bypass rate limit
+        }
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  }
 });
 
 const authLimiter = rateLimit({
