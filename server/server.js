@@ -17,6 +17,7 @@ import featureRoutes from "./routes/featureRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import meetingRoutes from "./routes/meetingRoutes.js";
 import { initEmailAutomation } from "./utils/emailService.js";
+import { privacyPolicyHTML } from "./utils/privacyPolicyHTML.js";
 
 dotenv.config();
 
@@ -132,7 +133,7 @@ app.use((req, res, next) => {
 
 app.use(async (req, res, next) => {
   
-  if (req.path === "/") return next();
+  if (req.path === "/" || req.path === "/privacy-policy") return next();
 
   try {
     await connectDB();
@@ -145,6 +146,9 @@ app.use(async (req, res, next) => {
 });
 
 app.get("/", (req, res) => res.send("API is running successfully!"));
+app.get("/privacy-policy", (req, res) => {
+  res.type('html').send(privacyPolicyHTML);
+});
 // app.use("/api", apiRoutes); 
 
 // --- STRICT AUTH RATE LIMITERS ---
