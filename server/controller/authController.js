@@ -188,8 +188,11 @@ export const requestOTP = async (req, res) => {
     console.log(`[OTP Request] Phone: ${phoneNumber}, Normalized: ${normalizedPhone}, Mode: ${mode}`);
     console.log(`[OTP Request] SMS_DEV_MODE: ${process.env.SMS_DEV_MODE}`);
 
-    // Generate 4-digit OTP (Predictable 1234 in Dev Mode)
-    const otp = process.env.SMS_DEV_MODE === "true" 
+    // Apple App Store Reviewer Bypass
+    const isAppleReviewer = normalizedPhone === "919999999999";
+
+    // Generate 4-digit OTP (Predictable 1234 in Dev Mode or for Apple Reviewer)
+    const otp = (process.env.SMS_DEV_MODE === "true" || isAppleReviewer)
       ? "1234" 
       : crypto.randomInt(1000, 10000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -229,7 +232,11 @@ export const requestOTP = async (req, res) => {
 
     // Send OTP via SMS
     try {
-        await sendSMSOTP(normalizedPhone, otp);
+        if (!isAppleReviewer) {
+            await sendSMSOTP(normalizedPhone, otp);
+        } else {
+            console.log("[OTP Request] Bypassed SMS for Apple Reviewer account");
+        }
     } catch (smsError) {
         console.error("[OTP Request] SMS provider error:", smsError.message);
         return res.status(500).json({ message: smsError.message || "Failed to deliver SMS. Check provider balance." });
