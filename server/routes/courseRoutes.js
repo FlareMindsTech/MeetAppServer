@@ -23,9 +23,8 @@ import { uploadMedia } from "../controller/cloudinaryController.js";
 // Roles
 const adminOnly = checkRoles(["owner", "admin"]);
 
-// --- STUDENT / PUBLIC ---
 router.get("/courses", optionalAuth, getPublicCourses);
-router.get("/courses/:id", auth, getCourseDetails);
+router.get("/courses/:id", optionalAuth, getCourseDetails);
 router.get("/courses/:id/modules", getCourseModules);
 router.post("/courses/:id/enroll", auth, enrollStudent);
 
