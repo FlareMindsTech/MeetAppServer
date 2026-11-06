@@ -4,6 +4,7 @@ import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
 import { sendEnrollmentEmail } from "../utils/emailService.js";
 import { sendCourseOfferWhatsApp } from "../utils/whatsappService.js";
+import { sendNewCourseNotification } from "../config/firebase.js";
 import Subscription from "../Model/subscription.js"; 
 import Module from "../Model/module.js";  
 import Lesson from "../Model/lesson.js"; 
@@ -508,6 +509,13 @@ export const createCourse = async (req, res) => {
         };
       });
       await Meeting.insertMany(meetingDocs);
+    }
+
+    // Broadcast push notification to all users about the new course
+    try {
+      sendNewCourseNotification(course);
+    } catch (notifErr) {
+      console.error("Failed to trigger FCM notification:", notifErr);
     }
 
     return res.status(201).json(course);

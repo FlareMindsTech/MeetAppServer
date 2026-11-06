@@ -1,4 +1,5 @@
 import Notification from "../Model/notification.js";
+import { sendAnnouncementNotification } from "../config/firebase.js";
 import User from "../Model/userSchema.js";
 export const getUserNotifications = async (req, res) => {
   try {
@@ -63,6 +64,13 @@ export const createAnnouncement = async (req, res) => {
       isGlobal: true,
       type: "announcement",
     });
+
+    // Send Push Notification to all users
+    try {
+      sendAnnouncementNotification(announcement);
+    } catch (pushErr) {
+      console.error("Failed to trigger Announcement FCM push:", pushErr);
+    }
 
     res.status(201).json({ message: "Announcement created", announcement });
   } catch (err) {

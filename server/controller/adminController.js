@@ -8,6 +8,7 @@ import SubModule from "../Model/subModule.js";
 import Lesson from "../Model/lesson.js";
 import Progress from "../Model/progress.js";
 import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
+import { sendNewLessonNotification } from "../config/firebase.js";
 
 const bunnyStreamUploadUrl = "https://video.bunnycdn.com/tusupload";
 
@@ -361,6 +362,24 @@ export const createLesson = async (req, res) => {
       duration: Number(duration) || autoDuration || 0,
       order: Number(order) || 0,
     });
+
+    // Send push notification about the new lesson
+    try {
+      const subModuleDoc = await SubModule.findById(subModuleId).populate({
+        path: "module",
+        populate: { path: "course" },
+      });
+      const course = subModuleDoc?.module?.course;
+      if (course) {
+        sendNewLessonNotification({
+          lessonTitle: title,
+          courseTitle: course.title,
+          courseId: course._id,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Failed to trigger New Lesson notification:", notifErr);
+    }
 
     res.status(201).json(newLesson);
   } catch (err) {
