@@ -5,7 +5,7 @@ import User from "../Model/userSchema.js";
 import Notification from "../Model/notification.js";
 import { sendEnrollmentEmail } from "../utils/emailService.js";
 import { sendCourseOfferWhatsApp } from "../utils/whatsappService.js";
-import { sendNewCourseNotification } from "../config/firebase.js";
+import { sendNewCourseNotification, sendPromoteCourseNotification } from "../config/firebase.js";
 import Subscription from "../Model/subscription.js"; 
 import Module from "../Model/module.js";  
 import Lesson from "../Model/lesson.js"; 
@@ -878,16 +878,18 @@ export const notifyStudentsAboutCourse = async (req, res) => {
     course.lastNotifiedAt = new Date();
     await course.save();
 
-    // Broadcast push notification to all students
-    await sendNewCourseNotification(course, {
+    // Broadcast push notification to all students with "Featured / Recommended" copy (NOT "New Course")
+    await sendPromoteCourseNotification(course, {
       creatorId: req.user?.id || req.user?._id,
       creatorRole: req.user?.role || "owner",
+      customTitle: `📢 Featured Course: ${course.title}!`,
+      customBody: `Explore full classes in "${course.title}". Tap to view details & start learning! 👗✨`,
     });
 
     // Create in-app global notification
     await Notification.create({
-      title: "📢 Featured Course Available!",
-      message: `"${course.title}" is available now! Tap to explore lessons and enroll.`,
+      title: `📢 Featured Course: ${course.title}!`,
+      message: `Explore full classes in "${course.title}". Tap to view details & start learning! 👗✨`,
       isGlobal: true,
       type: "course",
     });

@@ -296,4 +296,71 @@ export const sendMarketingNotification = async ({ title, body }) => {
   }
 };
 
+/**
+ * 5. Send course promotion notification for an EXISTING course
+ * Does NOT say "New Course Available", but "Featured / Recommended Course"
+ */
+export const sendPromoteCourseNotification = async (course, { creatorId = "", creatorRole = "", customTitle = "", customBody = "" } = {}) => {
+  try {
+    if (!messaging) {
+      console.warn("⚠️ FCM Messaging not initialized, skipping notification");
+      return;
+    }
+    const courseId = course._id ? course._id.toString() : (course.id || "");
+    const courseTitle = course.title || "Course";
+    const courseThumbnail = course.thumbnail || "";
+
+    const condition = "'students' in topics"; // strictly target students (excludes owner/admin)
+
+    const title = customTitle || `📢 Featured Course: ${courseTitle}!`;
+    const body = customBody || `Explore full classes in "${courseTitle}". Tap to view details & start learning! 👗✨`;
+
+    const message = {
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: {
+        type: "new_course",
+        courseId: courseId,
+        title: courseTitle,
+        creatorId: creatorId ? creatorId.toString() : "",
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+      condition: condition,
+      android: {
+        priority: "high",
+        ttl: 0,
+        notification: {
+          channelId: "high_importance_channel",
+          priority: "max",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            contentAvailable: true,
+          },
+        },
+      },
+    };
+
+    if (courseThumbnail) {
+      message.notification.imageUrl = courseThumbnail;
+    }
+
+    const response = await messaging.send(message);
+    console.log(`✅ FCM Existing Course Promotion notification sent for [${courseTitle}]:`, response);
+    return response;
+  } catch (error) {
+    console.error("❌ Error sending course promotion notification:", error.message);
+  }
+};
+
 export { app, messaging };
