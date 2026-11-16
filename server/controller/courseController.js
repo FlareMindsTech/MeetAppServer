@@ -831,15 +831,19 @@ export const manualEnrollStudent = async (req, res) => {
     });
 
     // 7. Send notification emails
-    try {
-      await sendEnrollmentEmail({
-        student,
-        course,
-        expiresAt,
-        isOneTime: true
-      });
-    } catch (emailErr) {
-      console.error("Email sending failed:", emailErr);
+    if (student.email && student.email.trim() !== "") {
+      try {
+        await sendEnrollmentEmail({
+          student,
+          course,
+          expiresAt,
+          isOneTime: true
+        });
+      } catch (emailErr) {
+        console.error("❌ Email sending failed for student:", student.email, emailErr.message);
+      }
+    } else {
+      console.warn(`⚠️ Student ${student._id} (${student.FirstName || 'Unknown'}) does not have an email address. Skipping enrollment email.`);
     }
 
     res.status(200).json({

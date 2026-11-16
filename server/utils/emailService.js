@@ -21,14 +21,18 @@ const FROM_EMAIL = process.env.EMAIL_USER;
  * Common Email Wrapper to ensure consistent branding and error handling
  */
 const sendMail = async ({ to, subject, html }) => {
+    if (!to || typeof to !== "string" || to.trim() === "") {
+        console.warn(`[Email Service] Cannot send email "${subject}": Recipient email is missing or empty.`);
+        return null;
+    }
     try {
         const info = await transporter.sendMail({
             from: `"${SENDER_NAME}" <${FROM_EMAIL}>`,
-            to,
+            to: to.trim(),
             subject,
             html
         });
-        console.log(`[Email Service] Email sent: ${subject} to ${to}`);
+        console.log(`[Email Service] Email sent successfully: "${subject}" to ${to}`);
         return info;
     } catch (error) {
         console.error(`[Email Service] Failed to send email to ${to}:`, error.message);
