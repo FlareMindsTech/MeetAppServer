@@ -852,3 +852,52 @@ export const manualEnrollStudent = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// @desc    Notify all students about an existing course (Manual Owner Broadcast)
+// @route   POST /api/admin/courses/:id/notify-students
+export const notifyStudentsAboutCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const course = await Course.findById(id);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    // Cooldown check: prevent accidental multi-clicks within 12 hours
+    if (course.lastNotifiedAt) {
+      const hoursSinceLast = (Date.now() - new Date(course.lastNotifiedAt).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLast < 12) {
+        const remainingHours = Math.ceil(12 - hoursSinceLast);
+        return res.status(429).json({
+          message: `Students were already notified about this course recently. You can notify again in ${remainingHours} hour${remainingHours > 1 ? "s" : ""}.`,
+        });
+      }
+    }
+
+    // Update lastNotifiedAt
+    course.lastNotifiedAt = new Date();
+    await course.save();
+
+    // Broadcast push notification to all students
+    await sendNewCourseNotification(course, {
+      creatorId: req.user?.id || req.user?._id,
+      creatorRole: req.user?.role || "owner",
+    });
+
+    // Create in-app global notification
+    await Notification.create({
+      title: "📢 Featured Course Available!",
+      message: `"${course.title}" is available now! Tap to explore lessons and enroll.`,
+      isGlobal: true,
+      type: "course",
+    });
+
+    return res.json({
+      success: true,
+      message: `Notification sent successfully to all students for "${course.title}"!`,
+    });
+  } catch (err) {
+    console.error("Notify students error:", err);
+    return res.status(500).json({ message: err.message || "Failed to notify students" });
+  }
+};

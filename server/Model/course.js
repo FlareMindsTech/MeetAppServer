@@ -43,6 +43,9 @@ const courseSchema = new mongoose.Schema(
       renewalPlans: [renewalPlanSchema],
     },
 
+    // Timestamp when Owner manually notified students about this course
+    lastNotifiedAt: { type: Date, default: null },
+
     // ... other fields ...
   },
   { timestamps: true }
