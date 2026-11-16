@@ -22,6 +22,7 @@ const lessonSchema = new mongoose.Schema(
     isFree: { type: Boolean, default: false },
     duration: { type: Number },
     order: { type: Number, default: 0 },
+    notificationSent: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

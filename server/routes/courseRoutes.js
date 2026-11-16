@@ -17,7 +17,8 @@ import {
 import { 
   addModule, updateModule, deleteModule, 
   createLesson, updateLesson, deleteLesson, uploadResource,
-  addSubModule, updateSubModule, deleteSubModule, createBunnyStreamUpload
+  addSubModule, updateSubModule, deleteSubModule, createBunnyStreamUpload,
+  handleBunnyStreamWebhook
 } from "../controller/adminController.js";
 import { uploadMedia } from "../controller/cloudinaryController.js";
 
@@ -59,5 +60,8 @@ router.put("/admin/lessons/:id/update", auth, adminOnly, uploadContent.single("c
 router.delete("/admin/lessons/:id/delete", auth, adminOnly, deleteLesson);
 router.post("/admin/lesson/upload", auth, adminOnly, uploadContent.single("contentFile"), uploadResource);
 router.post("/admin/lesson/bunny-stream-upload", auth, adminOnly, createBunnyStreamUpload);
+
+// --- BUNNY STREAM WEBHOOK (Fired when video is 100% encoded) ---
+router.post("/webhooks/bunny-stream", handleBunnyStreamWebhook);
 
 export default router;

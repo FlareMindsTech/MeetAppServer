@@ -364,65 +364,70 @@ export const createLesson = async (req, res) => {
       order: Number(order) || 0,
     });
 
-    // Smart Notification Dispatch:
-    // - If this is the FIRST lesson in the course -> broadcast "New Course Live!" to ALL students
-    // - If this is a SUBSEQUENT lesson -> notify ONLY enrolled students of this course
-    try {
-      const subModuleDoc = await SubModule.findById(subModuleId).populate({
-        path: "module",
-        populate: { path: "course" },
-      });
-      const course = subModuleDoc?.module?.course;
-      if (course) {
-        // Count total lessons in this course to see if it is the first content uploaded
-        const moduleIds = await Module.find({ course: course._id }).distinct("_id");
-        const subModuleIds = await SubModule.find({ module: { $in: moduleIds } }).distinct("_id");
-        const lessonCount = await Lesson.countDocuments({ subModule: { $in: subModuleIds } });
+    // Notification Dispatch:
+    // If this lesson has a Bunny Stream video, notification is deferred until Bunny finishes transcoding (Status 4).
+    // This guarantees students NEVER see "video is still processing".
+    // If it's a PDF, text, or non-Bunny content, we notify immediately!
+    if (bunnyVideoId) {
+      console.log(`🎥 Lesson "${title}" has Bunny Stream video (${bunnyVideoId}). Notification will be triggered via Bunny Webhook once video is 100% encoded.`);
+    } else {
+      try {
+        const subModuleDoc = await SubModule.findById(subModuleId).populate({
+          path: "module",
+          populate: { path: "course" },
+        });
+        const course = subModuleDoc?.module?.course;
+        if (course) {
+          const moduleIds = await Module.find({ course: course._id }).distinct("_id");
+          const subModuleIds = await SubModule.find({ module: { $in: moduleIds } }).distinct("_id");
+          const lessonCount = await Lesson.countDocuments({ subModule: { $in: subModuleIds } });
 
-        if (lessonCount === 1) {
-          // 🎓 FIRST LESSON: The course now has real content! Broadcast "New Course Live" to all students
-          console.log(`🎓 First lesson uploaded for "${course.title}". Broadcasting New Course notification to all students...`);
-          sendNewCourseNotification(course, {
-            creatorId: req.user?.id || req.user?._id,
-            creatorRole: req.user?.role || "owner",
-          });
-          await Notification.create({
-            title: "🎓 New Course Available!",
-            message: `"${course.title}" is now live with lessons! Check it out now!`,
-            isGlobal: true,
-            type: "course",
-          });
-        } else {
-          // 📚 SUBSEQUENT LESSONS: Notify ONLY enrolled students of this course
-          console.log(`📚 Lesson #${lessonCount} uploaded for "${course.title}". Notifying enrolled students only...`);
-          sendNewLessonNotification({
-            lessonTitle: title,
-            courseTitle: course.title,
-            courseId: course._id,
-            creatorId: req.user?.id || req.user?._id,
-            creatorRole: req.user?.role || "admin",
-          });
+          // Mark notificationSent = true
+          newLesson.notificationSent = true;
+          await newLesson.save();
 
-          // In-app notification inbox ONLY for enrolled students of this course
-          const enrolledStudents = await User.find({
-            "subscribedCourses.courseId": course._id,
-            role: { $in: ["student", "user"] },
-          }).select("_id");
+          if (lessonCount <= 1) {
+            console.log(`🎓 First lesson uploaded for "${course.title}". Broadcasting New Course notification to all students...`);
+            await sendNewCourseNotification(course, {
+              creatorId: req.user?.id || req.user?._id,
+              creatorRole: req.user?.role || "owner",
+            });
+            await Notification.create({
+              title: "🎓 New Course Available!",
+              message: `"${course.title}" is now live with lessons! Check it out now!`,
+              isGlobal: true,
+              type: "course",
+            });
+          } else {
+            console.log(`📚 Lesson #${lessonCount} uploaded for "${course.title}". Notifying enrolled students only...`);
+            await sendNewLessonNotification({
+              lessonTitle: title,
+              courseTitle: course.title,
+              courseId: course._id,
+              creatorId: req.user?.id || req.user?._id,
+              creatorRole: req.user?.role || "admin",
+            });
 
-          if (enrolledStudents.length > 0) {
-            const notifDocs = enrolledStudents.map((s) => ({
-              recipient: s._id,
-              isGlobal: false,
-              title: `📚 New Lesson in ${course.title}!`,
-              message: `New lesson "${title}" has been added. Tap to watch!`,
-              type: "lesson",
-            }));
-            await Notification.insertMany(notifDocs);
+            const enrolledStudents = await User.find({
+              "subscribedCourses.courseId": course._id,
+              role: { $in: ["student", "user"] },
+            }).select("_id");
+
+            if (enrolledStudents.length > 0) {
+              const notifDocs = enrolledStudents.map((s) => ({
+                recipient: s._id,
+                isGlobal: false,
+                title: `📚 New Lesson in ${course.title}!`,
+                message: `New lesson "${title}" has been added. Tap to watch!`,
+                type: "lesson",
+              }));
+              await Notification.insertMany(notifDocs);
+            }
           }
         }
+      } catch (notifErr) {
+        console.error("Failed to trigger lesson/course notification:", notifErr);
       }
-    } catch (notifErr) {
-      console.error("Failed to trigger lesson/course notification:", notifErr);
     }
 
     res.status(201).json(newLesson);
@@ -713,5 +718,111 @@ export const deleteStudent = async (req, res) => {
     res
       .status(500)
       .json({ message: "Server error deleting student", error: err.message });
+  }
+};
+
+// @desc    Bunny Stream Webhook: Fired when video finishes transcoding (Status 4 = Finished)
+// @route   POST /api/webhooks/bunny-stream
+export const handleBunnyStreamWebhook = async (req, res) => {
+  try {
+    const body = req.body || {};
+    const videoGuid = body.VideoGuid || body.videoGuid || body.VideoId || body.videoId || body.guid;
+    const status = Number(body.Status ?? body.status);
+
+    console.log(`[Bunny Webhook] Received event: VideoGuid=${videoGuid}, Status=${status}`);
+
+    if (!videoGuid) {
+      return res.status(400).json({ message: "VideoGuid is required" });
+    }
+
+    // Status 4 = Finished (video is 100% encoded and ready for smooth playback)
+    if (status !== 4) {
+      console.log(`[Bunny Webhook] Video ${videoGuid} status is ${status} (not 4/Finished). Awaiting finished event.`);
+      return res.status(200).json({ message: `Status ${status} received, waiting for finished event` });
+    }
+
+    // Find the lesson associated with this bunnyVideoId
+    const lesson = await Lesson.findOne({ bunnyVideoId: videoGuid });
+    if (!lesson) {
+      console.warn(`[Bunny Webhook] No lesson found for bunnyVideoId: ${videoGuid}`);
+      return res.status(200).json({ message: "Lesson not found for videoGuid" });
+    }
+
+    // Prevent duplicate notifications
+    if (lesson.notificationSent) {
+      console.log(`[Bunny Webhook] Notification already sent for lesson: "${lesson.title}" (${lesson._id})`);
+      return res.status(200).json({ message: "Notification already sent" });
+    }
+
+    // Mark notificationSent = true
+    lesson.notificationSent = true;
+    await lesson.save();
+
+    // Find course details
+    const subModuleDoc = await SubModule.findById(lesson.subModule).populate({
+      path: "module",
+      populate: { path: "course" },
+    });
+    const course = subModuleDoc?.module?.course;
+    if (!course) {
+      console.warn(`[Bunny Webhook] Course not found for lesson ${lesson._id}`);
+      return res.status(200).json({ message: "Course not found" });
+    }
+
+    // Count how many lessons in this course have already had notifications sent
+    const moduleIds = await Module.find({ course: course._id }).distinct("_id");
+    const subModuleIds = await SubModule.find({ module: { $in: moduleIds } }).distinct("_id");
+    const readyLessonsCount = await Lesson.countDocuments({
+      subModule: { $in: subModuleIds },
+      notificationSent: true,
+    });
+
+    console.log(`[Bunny Webhook] Video 100% READY! Ready lessons in "${course.title}": ${readyLessonsCount}`);
+
+    if (readyLessonsCount <= 1) {
+      // 🎓 FIRST LESSON READY: Course is now playable! Broadcast "New Course Live" to all students
+      console.log(`🎓 [Bunny Webhook] First lesson ready for "${course.title}". Broadcasting New Course notification...`);
+      await sendNewCourseNotification(course, {
+        creatorId: "",
+        creatorRole: "owner",
+      });
+      await Notification.create({
+        title: "🎓 New Course Available!",
+        message: `"${course.title}" is now live with lessons! Check it out now!`,
+        isGlobal: true,
+        type: "course",
+      });
+    } else {
+      // 📚 SUBSEQUENT LESSON READY: Notify ONLY enrolled students of this course
+      console.log(`📚 [Bunny Webhook] Lesson #${readyLessonsCount} ready for "${course.title}". Notifying enrolled students only...`);
+      await sendNewLessonNotification({
+        lessonTitle: lesson.title,
+        courseTitle: course.title,
+        courseId: course._id,
+        creatorId: "",
+        creatorRole: "admin",
+      });
+
+      const enrolledStudents = await User.find({
+        "subscribedCourses.courseId": course._id,
+        role: { $in: ["student", "user"] },
+      }).select("_id");
+
+      if (enrolledStudents.length > 0) {
+        const notifDocs = enrolledStudents.map((s) => ({
+          recipient: s._id,
+          isGlobal: false,
+          title: `📚 New Lesson in ${course.title}!`,
+          message: `New lesson "${lesson.title}" has been added. Tap to watch!`,
+          type: "lesson",
+        }));
+        await Notification.insertMany(notifDocs);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: "Notification sent after video processing completed" });
+  } catch (err) {
+    console.error("[Bunny Webhook] Error:", err);
+    return res.status(500).json({ message: err.message });
   }
 };
