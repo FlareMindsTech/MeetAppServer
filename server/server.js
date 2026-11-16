@@ -17,12 +17,14 @@ import featureRoutes from "./routes/featureRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import meetingRoutes from "./routes/meetingRoutes.js";
 import { initEmailAutomation } from "./utils/emailService.js";
+import { initMarketingAutomation } from "./services/marketingService.js";
 import { privacyPolicyHTML } from "./utils/privacyPolicyHTML.js";
 
 dotenv.config();
 
 // --- AUTOMATED SERVICES ---
 initEmailAutomation();
+initMarketingAutomation();
 
 const app = express();
 

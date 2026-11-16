@@ -8,6 +8,7 @@ import { getAboutUs, getPrivacyPolicy, getTerms, updateCMSPage, getAllCMSPages }
 import { getUserNotifications, markNotificationRead, createAnnouncement, deleteAnnouncement, getAllAnnouncements } from "../controller/notificationController.js";
 import { getPerformanceReport, getEngagementMetrics, getAdminCourseReports, getStudentActivityReport, getQuizPerformanceReport } from "../controller/analyticsController.js";
 import { createMeeting, allocateStudents, removeStudents, rescheduleMeeting, deleteMeeting, getCourseLiveClasses } from "../controller/meetingController.js";
+import { dispatchMorningMarketingNotification } from "../services/marketingService.js";
 
 // Roles
 const adminOnly = checkRoles(["owner", "admin"]);
@@ -42,5 +43,15 @@ router.post("/admin/meetings/:meetingId/allocate-students", auth, adminOnly, all
 router.post("/admin/meetings/:meetingId/remove-students", auth, adminOnly, removeStudents);
 router.put("/admin/meetings/:meetingId/reschedule", auth, adminOnly, rescheduleMeeting);
 router.delete("/admin/meetings/:meetingId/delete", auth, adminOnly, deleteMeeting);
+
+// --- MARKETING CRON (Every 2 days at 6:00 AM IST) ---
+router.get("/cron/morning-marketing", async (req, res) => {
+  try {
+    const result = await dispatchMorningMarketingNotification();
+    return res.json({ success: true, message: "Morning marketing notification dispatched", result });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 export default router;

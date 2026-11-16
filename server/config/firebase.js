@@ -245,4 +245,55 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
   }
 };
 
+/**
+ * 4. Send morning marketing notification to all students
+ */
+export const sendMarketingNotification = async ({ title, body }) => {
+  try {
+    if (!messaging) {
+      console.warn("⚠️ FCM Messaging not initialized, skipping notification");
+      return;
+    }
+
+    const message = {
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: {
+        type: "explore_courses",
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+      topic: "students",
+      android: {
+        priority: "high",
+        ttl: 0,
+        notification: {
+          channelId: "high_importance_channel",
+          priority: "max",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            contentAvailable: true,
+          },
+        },
+      },
+    };
+
+    const response = await messaging.send(message);
+    console.log("✅ FCM 6:00 AM Marketing notification sent:", response);
+    return response;
+  } catch (error) {
+    console.error("❌ Error sending marketing notification:", error.message);
+  }
+};
+
 export { app, messaging };
