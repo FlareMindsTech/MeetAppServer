@@ -512,22 +512,8 @@ export const createCourse = async (req, res) => {
       await Meeting.insertMany(meetingDocs);
     }
 
-    // Broadcast push notification to all users about the new course
-    try {
-      sendNewCourseNotification(course, {
-        creatorId: req.user?.id || req.user?._id,
-        creatorRole: req.user?.role || "owner",
-      });
-      await Notification.create({
-        title: "🎓 New Course Available!",
-        message: `"${course.title}" has just been published. Check it out now!`,
-        isGlobal: true,
-        type: "course",
-      });
-    } catch (notifErr) {
-      console.error("Failed to trigger FCM notification:", notifErr);
-    }
-
+    // Note: Notifications are NOT sent on empty course creation.
+    // They are automatically broadcast when the first lesson is uploaded, so students never see an empty course.
     return res.status(201).json(course);
   } catch (err) {
     console.error(err);

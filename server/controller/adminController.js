@@ -9,7 +9,7 @@ import Lesson from "../Model/lesson.js";
 import Notification from "../Model/notification.js";
 import Progress from "../Model/progress.js";
 import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
-import { sendNewLessonNotification } from "../config/firebase.js";
+import { sendNewLessonNotification, sendNewCourseNotification } from "../config/firebase.js";
 
 const bunnyStreamUploadUrl = "https://video.bunnycdn.com/tusupload";
 
@@ -364,7 +364,9 @@ export const createLesson = async (req, res) => {
       order: Number(order) || 0,
     });
 
-    // Send push notification about the new lesson
+    // Smart Notification Dispatch:
+    // - If this is the FIRST lesson in the course -> broadcast "New Course Live!" to ALL students
+    // - If this is a SUBSEQUENT lesson -> notify ONLY enrolled students of this course
     try {
       const subModuleDoc = await SubModule.findById(subModuleId).populate({
         path: "module",
@@ -372,34 +374,55 @@ export const createLesson = async (req, res) => {
       });
       const course = subModuleDoc?.module?.course;
       if (course) {
-        // 1. Send push notification ONLY to enrolled students subscribed to course_<courseId> topic
-        sendNewLessonNotification({
-          lessonTitle: title,
-          courseTitle: course.title,
-          courseId: course._id,
-          creatorId: req.user?.id || req.user?._id,
-          creatorRole: req.user?.role || "admin",
-        });
+        // Count total lessons in this course to see if it is the first content uploaded
+        const moduleIds = await Module.find({ course: course._id }).distinct("_id");
+        const subModuleIds = await SubModule.find({ module: { $in: moduleIds } }).distinct("_id");
+        const lessonCount = await Lesson.countDocuments({ subModule: { $in: subModuleIds } });
 
-        // 2. Add in-app notification in inbox ONLY for enrolled students of this course
-        const enrolledStudents = await User.find({
-          "subscribedCourses.courseId": course._id,
-          role: { $in: ["student", "user"] },
-        }).select("_id");
+        if (lessonCount === 1) {
+          // 🎓 FIRST LESSON: The course now has real content! Broadcast "New Course Live" to all students
+          console.log(`🎓 First lesson uploaded for "${course.title}". Broadcasting New Course notification to all students...`);
+          sendNewCourseNotification(course, {
+            creatorId: req.user?.id || req.user?._id,
+            creatorRole: req.user?.role || "owner",
+          });
+          await Notification.create({
+            title: "🎓 New Course Available!",
+            message: `"${course.title}" is now live with lessons! Check it out now!`,
+            isGlobal: true,
+            type: "course",
+          });
+        } else {
+          // 📚 SUBSEQUENT LESSONS: Notify ONLY enrolled students of this course
+          console.log(`📚 Lesson #${lessonCount} uploaded for "${course.title}". Notifying enrolled students only...`);
+          sendNewLessonNotification({
+            lessonTitle: title,
+            courseTitle: course.title,
+            courseId: course._id,
+            creatorId: req.user?.id || req.user?._id,
+            creatorRole: req.user?.role || "admin",
+          });
 
-        if (enrolledStudents.length > 0) {
-          const notifDocs = enrolledStudents.map((s) => ({
-            recipient: s._id,
-            isGlobal: false,
-            title: `📚 New Lesson in ${course.title}!`,
-            message: `New lesson "${title}" has been added. Tap to watch!`,
-            type: "lesson",
-          }));
-          await Notification.insertMany(notifDocs);
+          // In-app notification inbox ONLY for enrolled students of this course
+          const enrolledStudents = await User.find({
+            "subscribedCourses.courseId": course._id,
+            role: { $in: ["student", "user"] },
+          }).select("_id");
+
+          if (enrolledStudents.length > 0) {
+            const notifDocs = enrolledStudents.map((s) => ({
+              recipient: s._id,
+              isGlobal: false,
+              title: `📚 New Lesson in ${course.title}!`,
+              message: `New lesson "${title}" has been added. Tap to watch!`,
+              type: "lesson",
+            }));
+            await Notification.insertMany(notifDocs);
+          }
         }
       }
     } catch (notifErr) {
-      console.error("Failed to trigger New Lesson notification:", notifErr);
+      console.error("Failed to trigger lesson/course notification:", notifErr);
     }
 
     res.status(201).json(newLesson);
