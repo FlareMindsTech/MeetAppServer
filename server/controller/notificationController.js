@@ -67,7 +67,10 @@ export const createAnnouncement = async (req, res) => {
 
     // Send Push Notification to all users
     try {
-      sendAnnouncementNotification(announcement);
+      sendAnnouncementNotification(announcement, {
+        creatorId: req.user?.id || req.user?._id,
+        creatorRole: req.user?.role || "admin",
+      });
     } catch (pushErr) {
       console.error("Failed to trigger Announcement FCM push:", pushErr);
     }

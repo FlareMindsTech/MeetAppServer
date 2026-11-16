@@ -376,6 +376,8 @@ export const createLesson = async (req, res) => {
           lessonTitle: title,
           courseTitle: course.title,
           courseId: course._id,
+          creatorId: req.user?.id || req.user?._id,
+          creatorRole: req.user?.role || "admin",
         });
         await Notification.create({
           title: `📚 New Lesson in ${course.title}!`,

@@ -514,7 +514,10 @@ export const createCourse = async (req, res) => {
 
     // Broadcast push notification to all users about the new course
     try {
-      sendNewCourseNotification(course);
+      sendNewCourseNotification(course, {
+        creatorId: req.user?.id || req.user?._id,
+        creatorRole: req.user?.role || "owner",
+      });
       await Notification.create({
         title: "🎓 New Course Available!",
         message: `"${course.title}" has just been published. Check it out now!`,

@@ -40,9 +40,9 @@ try {
 }
 
 /**
- * 1. Broadcast push notification to all users when a new course is created
+ * 1. Broadcast push notification to students/admins when a new course is created
  */
-export const sendNewCourseNotification = async (course) => {
+export const sendNewCourseNotification = async (course, { creatorId = "", creatorRole = "" } = {}) => {
   try {
     if (!messaging) {
       console.warn("⚠️ FCM Messaging not initialized, skipping notification");
@@ -51,6 +51,19 @@ export const sendNewCourseNotification = async (course) => {
     const courseId = course._id ? course._id.toString() : (course.id || "");
     const courseTitle = course.title || "New Course";
     const courseThumbnail = course.thumbnail || "";
+
+    // Target roles:
+    // If Owner creates -> notify Customers/Students & Admins (exclude Owner)
+    // If Admin creates -> notify Customers/Students & Owner (exclude Admin)
+    let condition = "'students' in topics";
+    const role = (creatorRole || "").toLowerCase().trim();
+    if (role === "owner") {
+      condition = "'students' in topics || 'admins' in topics";
+    } else if (role === "admin") {
+      condition = "'students' in topics || 'owners' in topics";
+    } else {
+      condition = "'all_users' in topics";
+    }
 
     const message = {
       notification: {
@@ -61,8 +74,10 @@ export const sendNewCourseNotification = async (course) => {
         type: "new_course",
         courseId: courseId,
         title: courseTitle,
+        creatorId: creatorId ? creatorId.toString() : "",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
+      condition: condition,
       android: {
         priority: "high",
         notification: {
@@ -83,7 +98,6 @@ export const sendNewCourseNotification = async (course) => {
           },
         },
       },
-      topic: "all_users",
     };
 
     if (courseThumbnail) {
@@ -99,9 +113,9 @@ export const sendNewCourseNotification = async (course) => {
 };
 
 /**
- * 2. Broadcast push notification to all users when an Announcement is published
+ * 2. Broadcast push notification when an Announcement is published
  */
-export const sendAnnouncementNotification = async (announcement) => {
+export const sendAnnouncementNotification = async (announcement, { creatorId = "", creatorRole = "" } = {}) => {
   try {
     if (!messaging) {
       console.warn("⚠️ FCM Messaging not initialized, skipping notification");
@@ -109,6 +123,19 @@ export const sendAnnouncementNotification = async (announcement) => {
     }
     const title = announcement.title || "New Announcement";
     const body = announcement.message || "An important announcement was posted. Tap to view!";
+
+    // Target roles:
+    // If Owner creates -> notify Students & Admins
+    // If Admin creates -> notify Students & Owner
+    let condition = "'students' in topics";
+    const role = (creatorRole || "").toLowerCase().trim();
+    if (role === "owner") {
+      condition = "'students' in topics || 'admins' in topics";
+    } else if (role === "admin") {
+      condition = "'students' in topics || 'owners' in topics";
+    } else {
+      condition = "'all_users' in topics";
+    }
 
     const message = {
       notification: {
@@ -118,8 +145,10 @@ export const sendAnnouncementNotification = async (announcement) => {
       data: {
         type: "announcement",
         announcementId: announcement._id ? announcement._id.toString() : "",
+        creatorId: creatorId ? creatorId.toString() : "",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
+      condition: condition,
       android: {
         priority: "high",
         notification: {
@@ -140,7 +169,6 @@ export const sendAnnouncementNotification = async (announcement) => {
           },
         },
       },
-      topic: "all_users",
     };
 
     const response = await messaging.send(message);
@@ -154,12 +182,26 @@ export const sendAnnouncementNotification = async (announcement) => {
 /**
  * 3. Send push notification when a new Lesson is uploaded to a course
  */
-export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, courseId }) => {
+export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, courseId, creatorId = "", creatorRole = "" }) => {
   try {
     if (!messaging) {
       console.warn("⚠️ FCM Messaging not initialized, skipping notification");
       return;
     }
+
+    // Target roles:
+    // If Owner creates -> notify Students & Admins
+    // If Admin creates -> notify Students & Owner
+    let condition = "'students' in topics";
+    const role = (creatorRole || "").toLowerCase().trim();
+    if (role === "owner") {
+      condition = "'students' in topics || 'admins' in topics";
+    } else if (role === "admin") {
+      condition = "'students' in topics || 'owners' in topics";
+    } else {
+      condition = "'all_users' in topics";
+    }
+
     const message = {
       notification: {
         title: `📚 New Lesson in ${courseTitle || "Course"}!`,
@@ -169,8 +211,10 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
         type: "new_course", // Opens the course details so user can see the new lesson
         courseId: courseId ? courseId.toString() : "",
         title: lessonTitle || "",
+        creatorId: creatorId ? creatorId.toString() : "",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
+      condition: condition,
       android: {
         priority: "high",
         notification: {
@@ -191,7 +235,6 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
           },
         },
       },
-      topic: "all_users",
     };
 
     const response = await messaging.send(message);
