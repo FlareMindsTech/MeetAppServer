@@ -6,6 +6,7 @@ import Subscription from "../Model/subscription.js";
 import Module from "../Model/module.js";
 import SubModule from "../Model/subModule.js";
 import Lesson from "../Model/lesson.js";
+import Notification from "../Model/notification.js";
 import Progress from "../Model/progress.js";
 import cloudinary from "../config/cloudinary.js"; // Import Cloudinary
 import { sendNewLessonNotification } from "../config/firebase.js";
@@ -375,6 +376,12 @@ export const createLesson = async (req, res) => {
           lessonTitle: title,
           courseTitle: course.title,
           courseId: course._id,
+        });
+        await Notification.create({
+          title: `📚 New Lesson in ${course.title}!`,
+          message: `New lesson "${title}" has been added. Start learning now!`,
+          isGlobal: true,
+          type: "lesson",
         });
       }
     } catch (notifErr) {

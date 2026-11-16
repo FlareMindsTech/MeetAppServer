@@ -2,6 +2,7 @@
 // import fs from "fs";
 import Course from "../Model/course.js";
 import User from "../Model/userSchema.js";
+import Notification from "../Model/notification.js";
 import { sendEnrollmentEmail } from "../utils/emailService.js";
 import { sendCourseOfferWhatsApp } from "../utils/whatsappService.js";
 import { sendNewCourseNotification } from "../config/firebase.js";
@@ -514,6 +515,12 @@ export const createCourse = async (req, res) => {
     // Broadcast push notification to all users about the new course
     try {
       sendNewCourseNotification(course);
+      await Notification.create({
+        title: "🎓 New Course Available!",
+        message: `"${course.title}" has just been published. Check it out now!`,
+        isGlobal: true,
+        type: "course",
+      });
     } catch (notifErr) {
       console.error("Failed to trigger FCM notification:", notifErr);
     }
