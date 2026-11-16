@@ -80,9 +80,10 @@ export const sendNewCourseNotification = async (course, { creatorId = "", creato
       condition: condition,
       android: {
         priority: "high",
+        ttl: 0,
         notification: {
           channelId: "high_importance_channel",
-          priority: "high",
+          priority: "max",
           defaultSound: true,
           defaultVibrateTimings: true,
         },
@@ -151,9 +152,10 @@ export const sendAnnouncementNotification = async (announcement, { creatorId = "
       condition: condition,
       android: {
         priority: "high",
+        ttl: 0,
         notification: {
           channelId: "high_importance_channel",
-          priority: "high",
+          priority: "max",
           defaultSound: true,
           defaultVibrateTimings: true,
         },
@@ -181,6 +183,7 @@ export const sendAnnouncementNotification = async (announcement, { creatorId = "
 
 /**
  * 3. Send push notification when a new Lesson is uploaded to a course
+ * ONLY sent to enrolled students who are subscribed to this course topic (course_<courseId>)
  */
 export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, courseId, creatorId = "", creatorRole = "" }) => {
   try {
@@ -189,18 +192,14 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
       return;
     }
 
-    // Target roles:
-    // If Owner creates -> notify Students & Admins
-    // If Admin creates -> notify Students & Owner
-    let condition = "'students' in topics";
-    const role = (creatorRole || "").toLowerCase().trim();
-    if (role === "owner") {
-      condition = "'students' in topics || 'admins' in topics";
-    } else if (role === "admin") {
-      condition = "'students' in topics || 'owners' in topics";
-    } else {
-      condition = "'all_users' in topics";
+    const cId = courseId ? courseId.toString() : "";
+    if (!cId) {
+      console.warn("⚠️ courseId missing for lesson notification, skipping");
+      return;
     }
+
+    // Direct topic: only students enrolled in this course receive this notification
+    const topic = `course_${cId}`;
 
     const message = {
       notification: {
@@ -208,18 +207,19 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
         body: `New lesson "${lessonTitle}" has been added. Tap to watch!`,
       },
       data: {
-        type: "new_course", // Opens the course details so user can see the new lesson
-        courseId: courseId ? courseId.toString() : "",
+        type: "new_lesson",
+        courseId: cId,
         title: lessonTitle || "",
         creatorId: creatorId ? creatorId.toString() : "",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
-      condition: condition,
+      topic: topic,
       android: {
         priority: "high",
+        ttl: 0,
         notification: {
           channelId: "high_importance_channel",
-          priority: "high",
+          priority: "max",
           defaultSound: true,
           defaultVibrateTimings: true,
         },
@@ -238,7 +238,7 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
     };
 
     const response = await messaging.send(message);
-    console.log("✅ FCM New Lesson notification sent:", response);
+    console.log(`✅ FCM New Lesson notification sent to topic [${topic}]:`, response);
     return response;
   } catch (error) {
     console.error("❌ Error sending new lesson notification:", error.message);

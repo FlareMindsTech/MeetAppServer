@@ -372,6 +372,7 @@ export const createLesson = async (req, res) => {
       });
       const course = subModuleDoc?.module?.course;
       if (course) {
+        // 1. Send push notification ONLY to enrolled students subscribed to course_<courseId> topic
         sendNewLessonNotification({
           lessonTitle: title,
           courseTitle: course.title,
@@ -379,12 +380,23 @@ export const createLesson = async (req, res) => {
           creatorId: req.user?.id || req.user?._id,
           creatorRole: req.user?.role || "admin",
         });
-        await Notification.create({
-          title: `📚 New Lesson in ${course.title}!`,
-          message: `New lesson "${title}" has been added. Start learning now!`,
-          isGlobal: true,
-          type: "lesson",
-        });
+
+        // 2. Add in-app notification in inbox ONLY for enrolled students of this course
+        const enrolledStudents = await User.find({
+          "subscribedCourses.courseId": course._id,
+          role: { $in: ["student", "user"] },
+        }).select("_id");
+
+        if (enrolledStudents.length > 0) {
+          const notifDocs = enrolledStudents.map((s) => ({
+            recipient: s._id,
+            isGlobal: false,
+            title: `📚 New Lesson in ${course.title}!`,
+            message: `New lesson "${title}" has been added. Tap to watch!`,
+            type: "lesson",
+          }));
+          await Notification.insertMany(notifDocs);
+        }
       }
     } catch (notifErr) {
       console.error("Failed to trigger New Lesson notification:", notifErr);
