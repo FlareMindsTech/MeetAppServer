@@ -63,6 +63,26 @@ export const sendNewCourseNotification = async (course) => {
         title: courseTitle,
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "high_importance_channel",
+          priority: "high",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            contentAvailable: true,
+          },
+        },
+      },
       topic: "all_users",
     };
 
@@ -100,6 +120,26 @@ export const sendAnnouncementNotification = async (announcement) => {
         announcementId: announcement._id ? announcement._id.toString() : "",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "high_importance_channel",
+          priority: "high",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            contentAvailable: true,
+          },
+        },
+      },
       topic: "all_users",
     };
 
@@ -130,6 +170,26 @@ export const sendNewLessonNotification = async ({ lessonTitle, courseTitle, cour
         courseId: courseId ? courseId.toString() : "",
         title: lessonTitle || "",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "high_importance_channel",
+          priority: "high",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            contentAvailable: true,
+          },
+        },
       },
       topic: "all_users",
     };

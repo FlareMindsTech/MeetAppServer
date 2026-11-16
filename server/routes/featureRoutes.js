@@ -24,7 +24,8 @@ router.put("/admin/cms/page/:pageId", auth, adminOnly, updateCMSPage);
 router.get("/notifications", auth, getUserNotifications);
 router.post("/notifications/:notificationId/mark-read", auth, markNotificationRead);
 router.post("/admin/announcement/create", auth, adminOnly, createAnnouncement);
-router.get("/admin/announcement/list", auth, adminOnly, getAllAnnouncements);
+router.get("/admin/announcement/list", auth, getAllAnnouncements);
+router.get("/announcements", auth, getAllAnnouncements);
 router.delete("/admin/announcement/delete/:id", auth, adminOnly, deleteAnnouncement);
 
 // --- ANALYTICS ---
