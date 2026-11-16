@@ -18,19 +18,38 @@ const SENDER_NAME = "Aadvi Fashion Institution";
 const FROM_EMAIL = process.env.EMAIL_USER;
 
 /**
- * Common Email Wrapper to ensure consistent branding and error handling
+ * Utility to strip HTML tags and generate a clean plaintext fallback for spam compliance
  */
-const sendMail = async ({ to, subject, html }) => {
+const htmlToText = (html) => {
+    return html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+};
+
+/**
+ * Common Email Wrapper to ensure consistent branding, anti-spam compliance, and error handling
+ */
+const sendMail = async ({ to, subject, html, text }) => {
     if (!to || typeof to !== "string" || to.trim() === "") {
         console.warn(`[Email Service] Cannot send email "${subject}": Recipient email is missing or empty.`);
         return null;
     }
+    const plainText = text || htmlToText(html);
     try {
         const info = await transporter.sendMail({
             from: `"${SENDER_NAME}" <${FROM_EMAIL}>`,
             to: to.trim(),
+            replyTo: FROM_EMAIL,
             subject,
-            html
+            text: plainText,
+            html,
+            headers: {
+                "X-Priority": "1",
+                "X-MSMail-Priority": "High",
+                "Importance": "high",
+            }
         });
         console.log(`[Email Service] Email sent successfully: "${subject}" to ${to}`);
         return info;
@@ -70,22 +89,29 @@ export const sendEnrollmentEmail = async ({ student, course, expiresAt, isOneTim
     if (expDate && expDate.getFullYear() < 9990) {
         expiryDate = expDate.toLocaleDateString("en-US");
     }
-    const subject = isOneTime ? "Payment Successful & Enrollment Confirmed" : "Enrollment Confirmed";
+    const subject = `Welcome to ${course.title} — Enrollment Confirmed`;
     
-    const html = `
-        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
-            <h2 style="color: #10b981;">Welcome to ${SENDER_NAME}!</h2>
-            <p>Hello ${student.FirstName || student.email},</p>
-            <p>You have been enrolled in the course: <b>${course.title}</b>.</p>
-            <div style="background: #f9fafb; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p style="margin: 0;"><b>Access Valid Until:</b> ${expiryDate}</p>
-            </div>
-            <p>You can now log in to the portal to access your lessons and materials.</p>
-            <br>
-            <p>Best Regards,<br><b>${SENDER_NAME} Team</b></p>
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px;">
+    <div style="background-color: #ffffff; padding: 28px; color: #1e293b; max-width: 580px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <h2 style="color: #4f46e5; margin-top: 0; font-size: 22px;">Welcome to ${SENDER_NAME}!</h2>
+        <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <b>${student.FirstName || student.email}</b>,</p>
+        <p style="font-size: 15px; line-height: 1.6; color: #334155;">You have been enrolled in the course: <strong style="color: #0f172a;">${course.title}</strong>.</p>
+        <div style="background: #f1f5f9; border-left: 4px solid #4f46e5; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
+            <p style="margin: 0; font-size: 14px; color: #475569;"><b>Access Validity:</b> ${expiryDate}</p>
         </div>
-    `;
-    return sendMail({ to: student.email, subject: `${course.title} - ${subject}`, html });
+        <p style="font-size: 14px; line-height: 1.6; color: #64748b;">You can now open the <b>Aadvi Fashion Institute</b> mobile app to access your lessons, video classes, and study materials.</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+        <p style="font-size: 13px; color: #94a3b8; margin: 0;">Best Regards,<br><b style="color: #475569;">${SENDER_NAME} Team</b></p>
+    </div>
+</body>
+</html>`;
+    return sendMail({ to: student.email, subject, html });
 };
 
 /**
